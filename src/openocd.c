@@ -47,7 +47,7 @@
 #include <strings.h>
 #endif
 
-#define OPENOCD_BRANDING "GNU ARM Eclipse "
+#define OPENOCD_BRANDING ""
 #if INTPTR_MAX == INT32_MAX
 #define OPENOCD_WORDSIZE "32-bits "
 #elif INTPTR_MAX == INT64_MAX

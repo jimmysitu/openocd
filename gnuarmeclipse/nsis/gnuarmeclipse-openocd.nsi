@@ -26,10 +26,10 @@
 !include "x64.nsh"
 !include "MUI2.nsh"
 
-!define PUBLISHER 			"GNU ARM Eclipse"
+!define PUBLISHER 			"WDFTech"
 !define PRODUCT 			"OpenOCD"
 !define PRODUCTLOWERCASE 	"openocd"
-!define URL     			"http://gnuarmeclipse.livius.net"
+!define URL     			"http://www.WDFTech.com"
 
 ; Single instance, each new install will overwrite the values
 !define INSTALL_KEY_FOLDER "SOFTWARE\${PUBLISHER}\${PRODUCT}"
@@ -53,7 +53,7 @@
 !define VERSION_VALUE "${VERSION}"
 
 !define CONTACT_KEY_NAME "Contact"
-!define CONTACT_VALUE "Liviu Ionescu <ilg@livius.net>"
+!define CONTACT_VALUE "1670739974 <1670739974@qq.com>"
 
 !define URL_KEY_NAME "URLInfoAbout"
 !define URL_VALUE "${URL}"

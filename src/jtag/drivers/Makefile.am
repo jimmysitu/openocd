@@ -65,6 +65,9 @@ endif
 if FTDI
 DRIVERFILES += ftdi.c mpsse.c
 endif
+if W_JTAG_SJ
+DRIVERFILES += w_jtag_sj.c w_jtag_sj_io.c
+endif
 if JTAG_VPI
 DRIVERFILES += jtag_vpi.c
 endif
