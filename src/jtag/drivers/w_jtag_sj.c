@@ -39,12 +39,17 @@
 
 #include "w_jtag_sj_io.h"
 
+#define SWO_MAX_FREQ_FS 2250000
+#define SWO_MAX_FREQ_HS 1875000
+
 static char *wjtagsj_device_desc;
 static char *wjtagsj_serial;
 static uint8_t wjtagsj_channel;
 
 static bool swd_mode;
 static bool swo_raw_data =false;
+
+static uint32_t swo_max_freq = 0xFFFFFFFF;
 
 #define MAX_USB_IDS 8
 /* vid = pid = 0 marks the end of the list */
@@ -520,20 +525,26 @@ static int wjtagsj_config_trace(bool enabled, enum tpio_pin_protocol pin_protoco
 	uint32_t infreq;
 	uint32_t validfreq;
 
+    if(swo_max_freq == 0xFFFFFFFF)
+        {
+        swo_max_freq = SWO_MAX_FREQ_FS;
+    }
+
 	if(! swd_mode) {
 		LOG_INFO("SWO can be used in SWD mode only");
 		return ERROR_FAIL;
 	}
 
-	if (pin_protocol != ASYNC_UART) {
+    if(enabled)
+        if (pin_protocol != ASYNC_UART) {
 		LOG_ERROR("Selected pin protocol is not supported.");
 		return ERROR_FAIL;
-	}
 
-	if(*trace_freq > 2500000) {
-		LOG_ERROR("Frequency exceed the limit of 2.5MHz");
-		return ERROR_FAIL;
-	}
+    	if(*trace_freq > swo_max_freq) {
+    		LOG_ERROR("Frequency exceed the limit of max swo baudrate");
+    		return ERROR_FAIL;
+    	}
+    }
 
 	/*disable SWO*/
 	if(!enabled) {
@@ -546,8 +557,8 @@ static int wjtagsj_config_trace(bool enabled, enum tpio_pin_protocol pin_protoco
 	}
 
 	/*enable SWO*/
-	infreq = 2250000;
-	validfreq = 2250000;
+	infreq = swo_max_freq;
+	validfreq = swo_max_freq;
 
 	if (!*trace_freq)
 		*trace_freq = infreq;
@@ -886,6 +897,24 @@ COMMAND_HANDLER(wjtagsj_handle_swo_raw_data)
 	return ERROR_OK;
 }
 
+COMMAND_HANDLER(wjtagsj_swo_max_baudrate)
+{
+	if (CMD_ARGC == 1) {
+		unsigned int  swo_freq;
+		COMMAND_PARSE_NUMBER(u32,CMD_ARGV[0],swo_freq);
+        if((swo_freq == SWO_MAX_FREQ_FS) ||(swo_freq == SWO_MAX_FREQ_HS) )
+		    swo_max_freq=swo_freq;
+        else
+            {
+            LOG_WARNING("invalid swo baudrate:2250000 for FS;1875000 for HS");
+        }
+	} else {
+		return ERROR_COMMAND_SYNTAX_ERROR;
+	}
+	return ERROR_OK;
+}
+
+
 static const struct command_registration wjtagsj_command_handlers[] = {
 	{
 		.name = "wjtagsj_device_desc",
@@ -914,6 +943,13 @@ static const struct command_registration wjtagsj_command_handlers[] = {
 		.mode = COMMAND_ANY,
 		.help = "raw data or processed",
 		.usage = "(0|1|on|off)",
+	},
+	{
+		.name = "wjtagsj_swo_max_baudrate",
+		.handler = &wjtagsj_swo_max_baudrate,
+		.mode = COMMAND_ANY,
+		.help = "set swo max baudrate for HS/FS adapter type:HS-1875000;FS-2250000",
+		.usage = "swo_max_baudrate",
 	},
 	COMMAND_REGISTRATION_DONE
 };
