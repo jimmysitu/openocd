@@ -16,6 +16,8 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #ifdef HAVE_CONFIG_H
@@ -316,7 +318,11 @@ static int jtag_vpi_runtest(int cycles, tap_state_t state)
 	if (retval != ERROR_OK)
 		return retval;
 
+#if BUILD_RISCV == 1
+	retval = jtag_vpi_queue_tdi(NULL, cycles, NO_TAP_SHIFT);
+#else
 	retval = jtag_vpi_queue_tdi(NULL, cycles, TAP_SHIFT);
+#endif
 	if (retval != ERROR_OK)
 		return retval;
 

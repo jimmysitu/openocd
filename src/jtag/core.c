@@ -23,9 +23,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -36,6 +34,7 @@
 #include "swd.h"
 #include "interface.h"
 #include <transport/transport.h>
+#include <helper/jep106.h>
 
 #ifdef HAVE_STRINGS_H
 #include <strings.h>
@@ -837,7 +836,124 @@ int default_interface_jtag_execute_queue(void)
 		return ERROR_FAIL;
 	}
 
+#if BUILD_RISCV == 1
+	int result = jtag->execute_queue();
+
+#if 0
+	// TODO: I like these better than some of the other JTAG debug statements,
+	// but having both is silly.
+	struct jtag_command *cmd = jtag_command_queue;
+	while (debug_level >= LOG_LVL_DEBUG && cmd) {
+		switch (cmd->type) {
+			case JTAG_SCAN:
+#if 0
+				LOG_DEBUG("JTAG %s SCAN to %s",
+						cmd->cmd.scan->ir_scan ? "IR" : "DR",
+						tap_state_name(cmd->cmd.scan->end_state));
+				for (int i = 0; i < cmd->cmd.scan->num_fields; i++) {
+					struct scan_field *field = cmd->cmd.scan->fields + i;
+					if (field->out_value) {
+						char *str = buf_to_str(field->out_value, field->num_bits, 16);
+						LOG_DEBUG("  %db out: %s", field->num_bits, str);
+						free(str);
+					}
+					if (field->in_value) {
+						char *str = buf_to_str(field->in_value, field->num_bits, 16);
+						LOG_DEBUG("  %db  in: %s", field->num_bits, str);
+						free(str);
+					}
+					if (field->check_value) {
+						char *str = buf_to_str(field->check_value, field->num_bits, 16);
+						LOG_DEBUG("  %db check: %s", field->num_bits, str);
+						free(str);
+					}
+					if (field->check_mask) {
+						char *str = buf_to_str(field->check_mask, field->num_bits, 16);
+						LOG_DEBUG("  %db mask: %s", field->num_bits, str);
+						free(str);
+					}
+				}
+#endif
+				{
+					uint8_t *buf = NULL;
+					int scan_bits = jtag_build_buffer(cmd->cmd.scan, &buf);
+					char *str_out = buf_to_str(buf, scan_bits, 16);
+					free(buf);
+					LOG_DEBUG("vvv jtag_scan(%d, %d, %d'h%s, %d); // %s",
+							cmd->cmd.scan->ir_scan,
+							scan_bits,
+							scan_bits, str_out,
+							cmd->cmd.scan->end_state, tap_state_name(cmd->cmd.scan->end_state));
+					free(str_out);
+
+					struct scan_field *last_field = cmd->cmd.scan->fields + cmd->cmd.scan->num_fields - 1;
+					if (last_field->in_value) {
+						char *str_in = buf_to_str(last_field->in_value, last_field->num_bits, 16);
+						LOG_DEBUG("vvv jtag_check_tdo(%d, %d'h%s);",
+								last_field->num_bits,
+								last_field->num_bits, str_in);
+						free(str_in);
+					}
+				}
+				break;
+			case JTAG_TLR_RESET:
+#if 0
+				LOG_DEBUG("JTAG TLR RESET to %s",
+						tap_state_name(cmd->cmd.statemove->end_state));
+#endif
+				LOG_DEBUG("vvv jtag_tlr_reset(%d); // %s",
+						cmd->cmd.statemove->end_state, 
+						tap_state_name(cmd->cmd.statemove->end_state));
+				break;
+			case JTAG_RUNTEST:
+#if 0
+				LOG_DEBUG("JTAG RUNTEST %d cycles to %s",
+						cmd->cmd.runtest->num_cycles,
+						tap_state_name(cmd->cmd.runtest->end_state));
+#endif
+				LOG_DEBUG("vvv jtag_runtest(%d, %d); // %s",
+						cmd->cmd.runtest->num_cycles,
+						cmd->cmd.runtest->end_state,
+						tap_state_name(cmd->cmd.runtest->end_state));
+				break;
+			case JTAG_RESET:
+				{
+#if 0
+					const char *reset_str[3] = {
+						"leave", "deassert", "assert"
+					};
+					LOG_DEBUG("JTAG RESET %s TRST, %s SRST",
+							reset_str[cmd->cmd.reset->trst + 1],
+							reset_str[cmd->cmd.reset->srst + 1]);
+#endif
+					LOG_DEBUG("vvv jtag_reset(%d, %d);",
+							cmd->cmd.reset->trst, cmd->cmd.reset->srst);
+				}
+				break;
+			case JTAG_PATHMOVE:
+				LOG_DEBUG("JTAG PATHMOVE (TODO)");
+				break;
+			case JTAG_SLEEP:
+				LOG_DEBUG("JTAG SLEEP (TODO)");
+				break;
+			case JTAG_STABLECLOCKS:
+				LOG_DEBUG("JTAG STABLECLOCKS (TODO)");
+				break;
+			case JTAG_TMS:
+				LOG_DEBUG("JTAG STABLECLOCKS (TODO)");
+				break;
+			default:
+				LOG_ERROR("Unknown JTAG command: %d", cmd->type);
+				break;
+		}
+		cmd = cmd->next;
+	}
+#endif
+
+	return result;
+#else
 	return jtag->execute_queue();
+#endif
 }
 
 void jtag_execute_queue_noclear(void)
@@ -894,6 +1010,8 @@ void jtag_sleep(uint32_t us)
 
 #define JTAG_MAX_AUTO_TAPS 20
 
+#define EXTRACT_JEP106_BANK(X) (((X) & 0xf00) >> 8)
+#define EXTRACT_JEP106_ID(X)   (((X) & 0xfe) >> 1)
 #define EXTRACT_MFG(X)  (((X) & 0xffe) >> 1)
 #define EXTRACT_PART(X) (((X) & 0xffff000) >> 12)
 #define EXTRACT_VER(X)  (((X) & 0xf0000000) >> 28)
@@ -957,10 +1075,11 @@ static void jtag_examine_chain_display(enum log_levels level, const char *msg,
 {
 	log_printf_lf(level, __FILE__, __LINE__, __func__,
 		"JTAG tap: %s %16.16s: 0x%08x "
-		"(mfg: 0x%3.3x, part: 0x%4.4x, ver: 0x%1.1x)",
+		"(mfg: 0x%3.3x (%s), part: 0x%4.4x, ver: 0x%1.1x)",
 		name, msg,
 		(unsigned int)idcode,
 		(unsigned int)EXTRACT_MFG(idcode),
+		jep106_manufacturer(EXTRACT_JEP106_BANK(idcode), EXTRACT_JEP106_ID(idcode)),
 		(unsigned int)EXTRACT_PART(idcode),
 		(unsigned int)EXTRACT_VER(idcode));
 }
@@ -1105,7 +1224,12 @@ static int jtag_examine_chain(void)
 
 		if ((idcode & 1) == 0) {
 			/* Zero for LSB indicates a device in bypass */
+#if BUILD_RISCV == 1
+			LOG_INFO("TAP %s does not have valid IDCODE (idcode=0x%x)",
+					tap->dotted_name, idcode);
+#else
 			LOG_INFO("TAP %s does not have IDCODE", tap->dotted_name);
+#endif
 			tap->hasidcode = false;
 			tap->idcode = 0;
 
@@ -1715,11 +1839,11 @@ void jtag_set_reset_config(enum reset_types type)
 
 int jtag_get_trst(void)
 {
-	return jtag_trst;
+	return jtag_trst == 1;
 }
 int jtag_get_srst(void)
 {
-	return jtag_srst;
+	return jtag_srst == 1;
 }
 
 void jtag_set_nsrst_delay(unsigned delay)

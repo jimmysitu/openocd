@@ -13,9 +13,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -133,7 +131,7 @@ static int remote_bitbang_init_tcp(void)
 {
 	struct addrinfo hints = { .ai_family = AF_UNSPEC, .ai_socktype = SOCK_STREAM };
 	struct addrinfo *result, *rp;
-	int fd;
+	int fd = 0;
 
 	LOG_INFO("Connecting to %s:%s",
 			remote_bitbang_host ? remote_bitbang_host : "localhost",

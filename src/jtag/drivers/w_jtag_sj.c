@@ -389,7 +389,7 @@ static void wjtagsj_execute_stableclocks(struct jtag_command *cmd)
 	/* 7 bits of either ones or zeros. */
 	uint8_t tms = tap_get_state() == TAP_RESET ? 0x7f : 0x00;
 
-	//直接输出
+	//直\BD\D3\CA\E4\B3\F6
 	wjtagsj_clock_tms_cs_out(wjtagsj_ctx1,&tms, 0,num_cycles);
 
 
@@ -535,11 +535,11 @@ static int wjtagsj_config_trace(bool enabled, enum tpio_pin_protocol pin_protoco
 		return ERROR_FAIL;
 	}
 
-    if(enabled)
-        if (pin_protocol != ASYNC_UART) {
+    if(enabled) {
+       if (pin_protocol != ASYNC_UART) {
 		LOG_ERROR("Selected pin protocol is not supported.");
 		return ERROR_FAIL;
-
+        }
     	if(*trace_freq > swo_max_freq) {
     		LOG_ERROR("Frequency exceed the limit of max swo baudrate");
     		return ERROR_FAIL;
@@ -584,7 +584,7 @@ static int wjtagsj_initialize(void)
 	else
 		LOG_DEBUG("interface using shortest path jtag state transitions");
 
-	//尝试打开第一个
+	//\B3\A2\CA源蚩\DA一\B8\F6
 	for (int i = 0; wjtagsj_vid[i] || wjtagsj_pid[i]; i++) {
 		wjtagsj_ctx1 = wjtagsj_open(&wjtagsj_vid[i], &wjtagsj_pid[i], wjtagsj_device_desc,
 		                            wjtagsj_serial, wjtagsj_channel);
