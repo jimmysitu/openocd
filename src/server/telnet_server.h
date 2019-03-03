@@ -19,21 +19,18 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
-#ifndef TELNET_SERVER_H
-#define TELNET_SERVER_H
+#ifndef OPENOCD_SERVER_TELNET_SERVER_H
+#define OPENOCD_SERVER_TELNET_SERVER_H
 
 #include <server/server.h>
 
-#define TELNET_BUFFER_SIZE (1024)
+#define TELNET_BUFFER_SIZE (10*1024)
 
-#define TELNET_OPTION_MAX_SIZE (128)
 #define TELNET_LINE_HISTORY_SIZE (128)
-#define TELNET_LINE_MAX_SIZE (256)
+#define TELNET_LINE_MAX_SIZE (10*256)
 
 enum telnet_states {
 	TELNET_STATE_DATA,
@@ -49,17 +46,16 @@ enum telnet_states {
 
 struct telnet_connection {
 	char *prompt;
+	bool prompt_visible;
 	enum telnet_states state;
 	char line[TELNET_LINE_MAX_SIZE];
-	int line_size;
-	int line_cursor;
-	char option[TELNET_OPTION_MAX_SIZE];
-	int option_size;
+	size_t line_size;
+	size_t line_cursor;
 	char last_escape;
 	char *history[TELNET_LINE_HISTORY_SIZE];
-	int next_history;
-	int current_history;
-	int closed;
+	size_t next_history;
+	size_t current_history;
+	bool closed;
 };
 
 struct telnet_service {
@@ -68,5 +64,6 @@ struct telnet_service {
 
 int telnet_init(char *banner);
 int telnet_register_commands(struct command_context *command_context);
+void telnet_service_free(void);
 
-#endif	/* TELNET_SERVER_H */
+#endif /* OPENOCD_SERVER_TELNET_SERVER_H */

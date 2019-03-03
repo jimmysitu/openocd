@@ -13,9 +13,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -90,11 +88,13 @@ static int jim_aice_newtap_cmd(Jim_GetOptInfo *goi)
 		free(pTap);
 		return JIM_ERR;
 	}
-	Jim_GetOpt_String(goi, &cp, NULL);
-	pTap->chip = strdup(cp);
 
-	Jim_GetOpt_String(goi, &cp, NULL);
-	pTap->tapname = strdup(cp);
+	const char *tmp;
+	Jim_GetOpt_String(goi, &tmp, NULL);
+	pTap->chip = strdup(tmp);
+
+	Jim_GetOpt_String(goi, &tmp, NULL);
+	pTap->tapname = strdup(tmp);
 
 	/* name + dot + name + null */
 	x = strlen(pTap->chip) + 1 + strlen(pTap->tapname) + 1;
@@ -156,6 +156,59 @@ COMMAND_HANDLER(handle_aice_init_command)
 
 	LOG_DEBUG("Initializing jtag devices...");
 	return jtag_init(CMD_CTX);
+}
+
+COMMAND_HANDLER(handle_scan_chain_command)
+{
+	struct jtag_tap *tap;
+	char expected_id[12];
+
+	aice_scan_jtag_chain();
+	tap = jtag_all_taps();
+	command_print(CMD_CTX,
+		"   TapName             Enabled  IdCode     Expected   IrLen IrCap IrMask");
+	command_print(CMD_CTX,
+		"-- ------------------- -------- ---------- ---------- ----- ----- ------");
+
+	while (tap) {
+		uint32_t expected, expected_mask, ii;
+
+		snprintf(expected_id, sizeof expected_id, "0x%08x",
+			(unsigned)((tap->expected_ids_cnt > 0)
+				   ? tap->expected_ids[0]
+				   : 0));
+		if (tap->ignore_version)
+			expected_id[2] = '*';
+
+		expected = buf_get_u32(tap->expected, 0, tap->ir_length);
+		expected_mask = buf_get_u32(tap->expected_mask, 0, tap->ir_length);
+
+		command_print(CMD_CTX,
+			"%2d %-18s     %c     0x%08x %s %5d 0x%02x  0x%02x",
+			tap->abs_chain_position,
+			tap->dotted_name,
+			tap->enabled ? 'Y' : 'n',
+			(unsigned int)(tap->idcode),
+			expected_id,
+			(unsigned int)(tap->ir_length),
+			(unsigned int)(expected),
+			(unsigned int)(expected_mask));
+
+		for (ii = 1; ii < tap->expected_ids_cnt; ii++) {
+			snprintf(expected_id, sizeof expected_id, "0x%08x",
+				(unsigned) tap->expected_ids[ii]);
+			if (tap->ignore_version)
+				expected_id[2] = '*';
+
+			command_print(CMD_CTX,
+				"                                           %s",
+				expected_id);
+		}
+
+		tap = tap->next_tap;
+	}
+
+	return ERROR_OK;
 }
 
 static int jim_aice_arp_init(Jim_Interp *interp, int argc, Jim_Obj * const *argv)
@@ -306,6 +359,13 @@ aice_transport_jtag_subcommand_handlers[] = {
 		.mode = COMMAND_ANY,
 		.jim_handler = jim_aice_names,
 		.help = "Returns list of all JTAG tap names.",
+	},
+	{
+		.name = "scan_chain",
+		.handler = handle_scan_chain_command,
+		.mode = COMMAND_ANY,
+		.help = "print current scan chain configuration",
+		.usage = ""
 	},
 
 	COMMAND_REGISTRATION_DONE

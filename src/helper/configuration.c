@@ -16,9 +16,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -51,6 +49,21 @@ void add_config_command(const char *cfg)
 
 	config_file_names[num_config_files-1] = strdup(cfg);
 	config_file_names[num_config_files] = NULL;
+}
+
+void free_config(void)
+{
+	while (num_config_files)
+		free(config_file_names[--num_config_files]);
+
+	free(config_file_names);
+	config_file_names = NULL;
+
+	while (num_script_dirs)
+		free(script_search_dirs[--num_script_dirs]);
+
+	free(script_search_dirs);
+	script_search_dirs = NULL;
 }
 
 /* return full path or NULL according to search rules */

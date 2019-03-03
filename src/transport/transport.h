@@ -13,12 +13,15 @@
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TRANSPORT_H
-#define TRANSPORT_H
+#ifndef OPENOCD_TRANSPORT_TRANSPORT_H
+#define OPENOCD_TRANSPORT_TRANSPORT_H
+
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
 
 #include "helper/command.h"
 
@@ -91,4 +94,16 @@ int allow_transports(struct command_context *ctx, const char * const *vector);
 
 bool transports_are_declared(void);
 
+bool transport_is_jtag(void);
+bool transport_is_swd(void);
+
+#if BUILD_HLADAPTER
+bool transport_is_hla(void);
+#else
+static inline bool transport_is_hla(void)
+{
+	return false;
+}
 #endif
+
+#endif /* OPENOCD_TRANSPORT_TRANSPORT_H */

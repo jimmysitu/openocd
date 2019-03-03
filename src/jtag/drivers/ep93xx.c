@@ -13,9 +13,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -43,9 +41,9 @@ static volatile uint8_t *gpio_data_direction_register;
 
 /* low level command set
  */
-static int ep93xx_read(void);
-static void ep93xx_write(int tck, int tms, int tdi);
-static void ep93xx_reset(int trst, int srst);
+static bb_value_t ep93xx_read(void);
+static int ep93xx_write(int tck, int tms, int tdi);
+static int ep93xx_reset(int trst, int srst);
 
 static int ep93xx_init(void);
 static int ep93xx_quit(void);
@@ -69,12 +67,12 @@ static struct bitbang_interface ep93xx_bitbang = {
 	.blink = 0,
 };
 
-static int ep93xx_read(void)
+static bb_value_t ep93xx_read(void)
 {
-	return !!(*gpio_data_register & TDO_BIT);
+	return (*gpio_data_register & TDO_BIT) ? BB_HIGH : BB_LOW;
 }
 
-static void ep93xx_write(int tck, int tms, int tdi)
+static int ep93xx_write(int tck, int tms, int tdi)
 {
 	if (tck)
 		output_value |= TCK_BIT;
@@ -93,10 +91,12 @@ static void ep93xx_write(int tck, int tms, int tdi)
 
 	*gpio_data_register = output_value;
 	nanosleep(&ep93xx_zzzz, NULL);
+
+	return ERROR_OK;
 }
 
 /* (1) assert or (0) deassert reset lines */
-static void ep93xx_reset(int trst, int srst)
+static int ep93xx_reset(int trst, int srst)
 {
 	if (trst == 0)
 		output_value |= TRST_BIT;
@@ -110,6 +110,8 @@ static void ep93xx_reset(int trst, int srst)
 
 	*gpio_data_register = output_value;
 	nanosleep(&ep93xx_zzzz, NULL);
+
+	return ERROR_OK;
 }
 
 static int set_gonk_mode(void)

@@ -13,9 +13,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -107,7 +105,7 @@ static int tcl_target_callback_trace_handler(struct target *target,
 	if (tclc->tc_trace) {
 		hex = malloc(hex_len);
 		buf = malloc(max_len);
-		hexify(hex, (const char *)data, len, hex_len);
+		hexify(hex, data, len, hex_len);
 		snprintf(buf, max_len, "%s%s%s", header, hex, trailer);
 		tcl_output(connection, buf, strlen(buf));
 		free(hex);
@@ -159,7 +157,7 @@ static int tcl_new_connection(struct connection *connection)
 
 	connection->priv = tclc;
 
-	struct target *target = get_target_by_num(connection->cmd_ctx->current_target);
+	struct target *target = get_current_target_or_null(connection->cmd_ctx);
 	if (target != NULL)
 		tclc->tc_laststate = target->state;
 
@@ -360,4 +358,9 @@ int tcl_register_commands(struct command_context *cmd_ctx)
 {
 	tcl_port = strdup("6666");
 	return register_commands(cmd_ctx, NULL, tcl_command_handlers);
+}
+
+void tcl_service_free(void)
+{
+	free(tcl_port);
 }

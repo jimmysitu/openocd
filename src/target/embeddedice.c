@@ -19,9 +19,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -30,6 +28,7 @@
 
 #include "embeddedice.h"
 #include "register.h"
+#include <helper/time_support.h>
 
 /**
  * @file
@@ -578,8 +577,8 @@ int embeddedice_handshake(struct arm_jtag *jtag_info, int hsbit, uint32_t timeou
 	uint8_t field2_out[1];
 	int retval;
 	uint32_t hsact;
-	struct timeval lap;
 	struct timeval now;
+	struct timeval timeout_end;
 
 	if (hsbit == EICE_COMM_CTRL_WBIT)
 		hsact = 1;
@@ -612,7 +611,8 @@ int embeddedice_handshake(struct arm_jtag *jtag_info, int hsbit, uint32_t timeou
 	fields[2].in_value = NULL;
 
 	jtag_add_dr_scan(jtag_info->tap, 3, fields, TAP_IDLE);
-	gettimeofday(&lap, NULL);
+	gettimeofday(&timeout_end, NULL);
+	timeval_add_time(&timeout_end, 0, timeout * 1000);
 	do {
 		jtag_add_dr_scan(jtag_info->tap, 3, fields, TAP_IDLE);
 		retval = jtag_execute_queue();
@@ -623,8 +623,7 @@ int embeddedice_handshake(struct arm_jtag *jtag_info, int hsbit, uint32_t timeou
 			return ERROR_OK;
 
 		gettimeofday(&now, NULL);
-	} while ((uint32_t)((now.tv_sec - lap.tv_sec) * 1000
-			+ (now.tv_usec - lap.tv_usec) / 1000) <= timeout);
+	} while (timeval_compare(&now, &timeout_end) <= 0);
 
 	LOG_ERROR("embeddedice handshake timeout");
 	return ERROR_TARGET_TIMEOUT;

@@ -19,9 +19,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  *                                                                         *
  *                                                                         *
  *   Cortex-M3(tm) TRM, ARM DDI 0337E (r1p1) and 0337G (r2p0)              *
@@ -44,7 +42,7 @@
 
 /* NOTE:  most of this should work fine for the Cortex-M1 and
  * Cortex-M0 cores too, although they're ARMv6-M not ARMv7-M.
- * Some differences:  M0/M1 doesn't have FBP remapping or the
+ * Some differences:  M0/M1 doesn't have FPB remapping or the
  * DWT tracing/profiling support.  (So the cycle counter will
  * not be usable; the other stuff isn't currently used here.)
  *
@@ -52,11 +50,6 @@
  * silicon, such old parts are hard to find and thus not much tested
  * any longer.
  */
-
-/**
- * Returns the type of a break point required by address location
- */
-#define BKPT_TYPE_BY_ADDR(addr) ((addr) < 0x20000000 ? BKPT_HARD : BKPT_SOFT)
 
 /* forward declarations */
 static int cortex_m_store_core_reg_u32(struct target *target,
@@ -170,13 +163,9 @@ static int cortex_m_single_step_core(struct target *target)
 {
 	struct cortex_m_common *cortex_m = target_to_cm(target);
 	struct armv7m_common *armv7m = &cortex_m->armv7m;
-	uint32_t dhcsr_save;
 	int retval;
 
-	/* backup dhcsr reg */
-	dhcsr_save = cortex_m->dcb_dhcsr;
-
-	/* Mask interrupts before clearing halt, if done already.  This avoids
+	/* Mask interrupts before clearing halt, if not done already.  This avoids
 	 * Erratum 377497 (fixed in r1p0) where setting MASKINTS while clearing
 	 * HALT can put the core into an unknown state.
 	 */
@@ -193,7 +182,6 @@ static int cortex_m_single_step_core(struct target *target)
 	LOG_DEBUG(" ");
 
 	/* restore dhcsr reg */
-	cortex_m->dcb_dhcsr = dhcsr_save;
 	cortex_m_clear_halt(target);
 
 	return ERROR_OK;
@@ -244,13 +232,16 @@ static int cortex_m_endreset_event(struct target *target)
 	if (retval != ERROR_OK)
 		return retval;
 	if (!(cortex_m->dcb_dhcsr & C_DEBUGEN)) {
-		retval = mem_ap_write_u32(armv7m->debug_ap, DCB_DHCSR, DBGKEY | C_DEBUGEN);
+		retval = cortex_m_write_debug_halt_mask(target, 0, C_HALT | C_STEP | C_MASKINTS);
 		if (retval != ERROR_OK)
 			return retval;
 	}
 
-	/* clear any interrupt masking */
-	cortex_m_write_debug_halt_mask(target, 0, C_MASKINTS);
+	/* Restore proper interrupt masking setting. */
+	if (cortex_m->isrmasking_mode == CORTEX_M_ISRMASK_ON)
+		cortex_m_write_debug_halt_mask(target, C_MASKINTS, 0);
+	else
+		cortex_m_write_debug_halt_mask(target, 0, C_MASKINTS);
 
 	/* Enable features controlled by ITM and DWT blocks, and catch only
 	 * the vectors we were told to pay attention to.
@@ -264,7 +255,7 @@ static int cortex_m_endreset_event(struct target *target)
 		return retval;
 
 	/* Paranoia: evidently some (early?) chips don't preserve all the
-	 * debug state (including FBP, DWT, etc) across reset...
+	 * debug state (including FPB, DWT, etc) across reset...
 	 */
 
 	/* Enable FPB */
@@ -573,6 +564,17 @@ static int cortex_m_poll(struct target *target)
 		}
 	}
 
+	/* Check that target is truly halted, since the target could be resumed externally */
+	if ((prev_target_state == TARGET_HALTED) && !(cortex_m->dcb_dhcsr & S_HALT)) {
+		/* registers are now invalid */
+		register_cache_invalidate(armv7m->arm.core_cache);
+
+		target->state = TARGET_RUNNING;
+		LOG_WARNING("%s: external resume detected", target_name(target));
+		target_call_event_callbacks(target, TARGET_EVENT_RESUMED);
+		retval = ERROR_OK;
+	}
+
 	/* Did we detect a failure condition that we cleared? */
 	if (detected_failure != ERROR_OK)
 		retval = detected_failure;
@@ -684,7 +686,7 @@ void cortex_m_enable_breakpoints(struct target *target)
 }
 
 static int cortex_m_resume(struct target *target, int current,
-	uint32_t address, int handle_breakpoints, int debug_execution)
+	target_addr_t address, int handle_breakpoints, int debug_execution)
 {
 	struct armv7m_common *armv7m = target_to_armv7m(target);
 	struct breakpoint *breakpoint = NULL;
@@ -752,7 +754,7 @@ static int cortex_m_resume(struct target *target, int current,
 		/* Single step past breakpoint at current address */
 		breakpoint = breakpoint_find(target, resume_pc);
 		if (breakpoint) {
-			LOG_DEBUG("unset breakpoint at 0x%8.8" PRIx32 " (ID: %" PRIu32 ")",
+			LOG_DEBUG("unset breakpoint at " TARGET_ADDR_FMT " (ID: %" PRIu32 ")",
 				breakpoint->address,
 				breakpoint->unique_id);
 			cortex_m_unset_breakpoint(target, breakpoint);
@@ -784,7 +786,7 @@ static int cortex_m_resume(struct target *target, int current,
 
 /* int irqstepcount = 0; */
 static int cortex_m_step(struct target *target, int current,
-	uint32_t address, int handle_breakpoints)
+	target_addr_t address, int handle_breakpoints)
 {
 	struct cortex_m_common *cortex_m = target_to_cm(target);
 	struct armv7m_common *armv7m = &cortex_m->armv7m;
@@ -875,7 +877,7 @@ static int cortex_m_step(struct target *target, int current,
 				if (breakpoint)
 					retval = cortex_m_set_breakpoint(target, breakpoint);
 				else
-					retval = breakpoint_add(target, pc_value, 2, BKPT_TYPE_BY_ADDR(pc_value));
+					retval = breakpoint_add(target, pc_value, 2, BKPT_HARD);
 				bool tmp_bp_set = (retval == ERROR_OK);
 
 				/* No more breakpoints left, just do a step */
@@ -983,6 +985,18 @@ static int cortex_m_assert_reset(struct target *target)
 
 	bool srst_asserted = false;
 
+	if (!target_was_examined(target)) {
+		if (jtag_reset_config & RESET_HAS_SRST) {
+			adapter_assert_reset();
+			if (target->reset_halt)
+				LOG_ERROR("Target not examined, will not halt after reset!");
+			return ERROR_OK;
+		} else {
+			LOG_ERROR("Target not examined, reset NOT asserted!");
+			return ERROR_FAIL;
+		}
+	}
+
 	if ((jtag_reset_config & RESET_HAS_SRST) &&
 	    (jtag_reset_config & RESET_SRST_NO_GATING)) {
 		adapter_assert_reset();
@@ -992,34 +1006,23 @@ static int cortex_m_assert_reset(struct target *target)
 	/* Enable debug requests */
 	int retval;
 	retval = mem_ap_read_atomic_u32(armv7m->debug_ap, DCB_DHCSR, &cortex_m->dcb_dhcsr);
-	if (retval != ERROR_OK)
-		return retval;
-	if (!(cortex_m->dcb_dhcsr & C_DEBUGEN)) {
-		retval = mem_ap_write_u32(armv7m->debug_ap, DCB_DHCSR, DBGKEY | C_DEBUGEN);
-		if (retval != ERROR_OK)
-			return retval;
-	}
+	/* Store important errors instead of failing and proceed to reset assert */
+
+	if (retval != ERROR_OK || !(cortex_m->dcb_dhcsr & C_DEBUGEN))
+		retval = cortex_m_write_debug_halt_mask(target, 0, C_HALT | C_STEP | C_MASKINTS);
 
 	/* If the processor is sleeping in a WFI or WFE instruction, the
 	 * C_HALT bit must be asserted to regain control */
-	if (cortex_m->dcb_dhcsr & S_SLEEP) {
-		retval = mem_ap_write_u32(armv7m->debug_ap, DCB_DHCSR, DBGKEY | C_HALT | C_DEBUGEN);
-		if (retval != ERROR_OK)
-			return retval;
-	}
+	if (retval == ERROR_OK && (cortex_m->dcb_dhcsr & S_SLEEP))
+		retval = cortex_m_write_debug_halt_mask(target, C_HALT, 0);
 
-	retval = mem_ap_write_u32(armv7m->debug_ap, DCB_DCRDR, 0);
-	if (retval != ERROR_OK)
-		return retval;
+	mem_ap_write_u32(armv7m->debug_ap, DCB_DCRDR, 0);
+	/* Ignore less important errors */
 
 	if (!target->reset_halt) {
 		/* Set/Clear C_MASKINTS in a separate operation */
-		if (cortex_m->dcb_dhcsr & C_MASKINTS) {
-			retval = mem_ap_write_atomic_u32(armv7m->debug_ap, DCB_DHCSR,
-					DBGKEY | C_DEBUGEN | C_HALT);
-			if (retval != ERROR_OK)
-				return retval;
-		}
+		if (cortex_m->dcb_dhcsr & C_MASKINTS)
+			cortex_m_write_debug_halt_mask(target, 0, C_MASKINTS);
 
 		/* clear any debug flags before resuming */
 		cortex_m_clear_halt(target);
@@ -1033,22 +1036,34 @@ static int cortex_m_assert_reset(struct target *target)
 		 * bad vector table entries.  Should this include MMERR or
 		 * other flags too?
 		 */
-		retval = mem_ap_write_atomic_u32(armv7m->debug_ap, DCB_DEMCR,
+		int retval2;
+		retval2 = mem_ap_write_atomic_u32(armv7m->debug_ap, DCB_DEMCR,
 				TRCENA | VC_HARDERR | VC_BUSERR | VC_CORERESET);
-		if (retval != ERROR_OK)
-			return retval;
+		if (retval != ERROR_OK || retval2 != ERROR_OK)
+			LOG_INFO("AP write error, reset will not halt");
 	}
 
 	if (jtag_reset_config & RESET_HAS_SRST) {
 		/* default to asserting srst */
 		if (!srst_asserted)
 			adapter_assert_reset();
+
+		/* srst is asserted, ignore AP access errors */
+		retval = ERROR_OK;
 	} else {
 		/* Use a standard Cortex-M3 software reset mechanism.
-		 * We default to using VECRESET as it is supported on all current cores.
+		 * We default to using VECRESET as it is supported on all current cores
+		 * (except Cortex-M0, M0+ and M1 which support SYSRESETREQ only!)
 		 * This has the disadvantage of not resetting the peripherals, so a
 		 * reset-init event handler is needed to perform any peripheral resets.
 		 */
+		if (!cortex_m->vectreset_supported
+				&& reset_config == CORTEX_M_RESET_VECTRESET) {
+			reset_config = CORTEX_M_RESET_SYSRESETREQ;
+			LOG_WARNING("VECTRESET is not supported on this Cortex-M core, using SYSRESETREQ instead.");
+			LOG_WARNING("Set 'cortex_m reset_config sysresetreq'.");
+		}
+
 		LOG_DEBUG("Using Cortex-M %s", (reset_config == CORTEX_M_RESET_SYSRESETREQ)
 			? "SYSRESETREQ" : "VECTRESET");
 
@@ -1057,27 +1072,24 @@ static int cortex_m_assert_reset(struct target *target)
 				"handler to reset any peripherals or configure hardware srst support.");
 		}
 
-		retval = mem_ap_write_atomic_u32(armv7m->debug_ap, NVIC_AIRCR,
+		int retval3;
+		retval3 = mem_ap_write_atomic_u32(armv7m->debug_ap, NVIC_AIRCR,
 				AIRCR_VECTKEY | ((reset_config == CORTEX_M_RESET_SYSRESETREQ)
 				? AIRCR_SYSRESETREQ : AIRCR_VECTRESET));
-		if (retval != ERROR_OK)
+		if (retval3 != ERROR_OK)
 			LOG_DEBUG("Ignoring AP write error right after reset");
 
-		retval = dap_dp_init(armv7m->debug_ap->dap);
-		if (retval != ERROR_OK) {
+		retval3 = dap_dp_init(armv7m->debug_ap->dap);
+		if (retval3 != ERROR_OK)
 			LOG_ERROR("DP initialisation failed");
-			return retval;
-		}
 
-		{
+		else {
 			/* I do not know why this is necessary, but it
 			 * fixes strange effects (step/resume cause NMI
 			 * after reset) on LM3S6918 -- Michael Schwingen
 			 */
 			uint32_t tmp;
-			retval = mem_ap_read_atomic_u32(armv7m->debug_ap, NVIC_AIRCR, &tmp);
-			if (retval != ERROR_OK)
-				return retval;
+			mem_ap_read_atomic_u32(armv7m->debug_ap, NVIC_AIRCR, &tmp);
 		}
 	}
 
@@ -1085,6 +1097,10 @@ static int cortex_m_assert_reset(struct target *target)
 	jtag_add_sleep(50000);
 
 	register_cache_invalidate(cortex_m->armv7m.arm.core_cache);
+
+	/* now return stored error code if any */
+	if (retval != ERROR_OK)
+		return retval;
 
 	if (target->reset_halt) {
 		retval = target_halt(target);
@@ -1108,7 +1124,8 @@ static int cortex_m_deassert_reset(struct target *target)
 	enum reset_types jtag_reset_config = jtag_get_reset_config();
 
 	if ((jtag_reset_config & RESET_HAS_SRST) &&
-	    !(jtag_reset_config & RESET_SRST_NO_GATING)) {
+	    !(jtag_reset_config & RESET_SRST_NO_GATING) &&
+		target_was_examined(target)) {
 		int retval = dap_dp_init(armv7m->debug_ap->dap);
 		if (retval != ERROR_OK) {
 			LOG_ERROR("DP initialisation failed");
@@ -1131,9 +1148,6 @@ int cortex_m_set_breakpoint(struct target *target, struct breakpoint *breakpoint
 		return ERROR_OK;
 	}
 
-	if (cortex_m->auto_bp_type)
-		breakpoint->type = BKPT_TYPE_BY_ADDR(breakpoint->address);
-
 	if (breakpoint->type == BKPT_HARD) {
 		uint32_t fpcr_value;
 		while (comparator_list[fp_num].used && (fp_num < cortex_m->fp_num_code))
@@ -1145,6 +1159,10 @@ int cortex_m_set_breakpoint(struct target *target, struct breakpoint *breakpoint
 		breakpoint->set = fp_num + 1;
 		fpcr_value = breakpoint->address | 1;
 		if (cortex_m->fp_rev == 0) {
+			if (breakpoint->address > 0x1FFFFFFF) {
+				LOG_ERROR("Cortex-M Flash Patch Breakpoint rev.1 cannot handle HW breakpoint above address 0x1FFFFFFE");
+				return ERROR_FAIL;
+			}
 			uint32_t hilo;
 			hilo = (breakpoint->address & 0x2) ? FPCR_REPLACE_BKPT_HIGH : FPCR_REPLACE_BKPT_LOW;
 			fpcr_value = (fpcr_value & 0x1FFFFFFC) | hilo | 1;
@@ -1192,7 +1210,7 @@ int cortex_m_set_breakpoint(struct target *target, struct breakpoint *breakpoint
 		breakpoint->set = true;
 	}
 
-	LOG_DEBUG("BPID: %" PRIu32 ", Type: %d, Address: 0x%08" PRIx32 " Length: %d (set=%d)",
+	LOG_DEBUG("BPID: %" PRIu32 ", Type: %d, Address: " TARGET_ADDR_FMT " Length: %d (set=%d)",
 		breakpoint->unique_id,
 		(int)(breakpoint->type),
 		breakpoint->address,
@@ -1213,7 +1231,7 @@ int cortex_m_unset_breakpoint(struct target *target, struct breakpoint *breakpoi
 		return ERROR_OK;
 	}
 
-	LOG_DEBUG("BPID: %" PRIu32 ", Type: %d, Address: 0x%08" PRIx32 " Length: %d (set=%d)",
+	LOG_DEBUG("BPID: %" PRIu32 ", Type: %d, Address: " TARGET_ADDR_FMT " Length: %d (set=%d)",
 		breakpoint->unique_id,
 		(int)(breakpoint->type),
 		breakpoint->address,
@@ -1253,21 +1271,6 @@ int cortex_m_add_breakpoint(struct target *target, struct breakpoint *breakpoint
 {
 	struct cortex_m_common *cortex_m = target_to_cm(target);
 
-	if (cortex_m->auto_bp_type)
-		breakpoint->type = BKPT_TYPE_BY_ADDR(breakpoint->address);
-
-	if (breakpoint->type != BKPT_TYPE_BY_ADDR(breakpoint->address)) {
-		if (breakpoint->type == BKPT_HARD) {
-			LOG_INFO("flash patch comparator requested outside code memory region");
-			return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
-		}
-
-		if (breakpoint->type == BKPT_SOFT) {
-			LOG_INFO("soft breakpoint requested in code (flash) memory region");
-			return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
-		}
-	}
-
 	if ((breakpoint->type == BKPT_HARD) && (cortex_m->fp_code_available < 1)) {
 		LOG_INFO("no flash patch comparator unit available for hardware breakpoint");
 		return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
@@ -1293,14 +1296,11 @@ int cortex_m_remove_breakpoint(struct target *target, struct breakpoint *breakpo
 {
 	struct cortex_m_common *cortex_m = target_to_cm(target);
 
-	/* REVISIT why check? FBP can be updated with core running ... */
+	/* REVISIT why check? FPB can be updated with core running ... */
 	if (target->state != TARGET_HALTED) {
 		LOG_WARNING("target not halted");
 		return ERROR_TARGET_NOT_HALTED;
 	}
-
-	if (cortex_m->auto_bp_type)
-		breakpoint->type = BKPT_TYPE_BY_ADDR(breakpoint->address);
 
 	if (breakpoint->set)
 		cortex_m_unset_breakpoint(target, breakpoint);
@@ -1658,7 +1658,7 @@ static int cortex_m_store_core_reg_u32(struct target *target,
 	return ERROR_OK;
 }
 
-static int cortex_m_read_memory(struct target *target, uint32_t address,
+static int cortex_m_read_memory(struct target *target, target_addr_t address,
 	uint32_t size, uint32_t count, uint8_t *buffer)
 {
 	struct armv7m_common *armv7m = target_to_armv7m(target);
@@ -1672,7 +1672,7 @@ static int cortex_m_read_memory(struct target *target, uint32_t address,
 	return mem_ap_read_buf(armv7m->debug_ap, buffer, size, count, address);
 }
 
-static int cortex_m_write_memory(struct target *target, uint32_t address,
+static int cortex_m_write_memory(struct target *target, target_addr_t address,
 	uint32_t size, uint32_t count, const uint8_t *buffer)
 {
 	struct armv7m_common *armv7m = target_to_armv7m(target);
@@ -1690,6 +1690,7 @@ static int cortex_m_init_target(struct command_context *cmd_ctx,
 	struct target *target)
 {
 	armv7m_build_reg_cache(target);
+	arm_semihosting_init(target);
 	return ERROR_OK;
 }
 
@@ -1702,8 +1703,100 @@ void cortex_m_deinit_target(struct target *target)
 	cortex_m_dwt_free(target);
 	armv7m_free_reg_cache(target);
 
+	free(target->private_config);
 	free(cortex_m);
 }
+
+int cortex_m_profiling(struct target *target, uint32_t *samples,
+			      uint32_t max_num_samples, uint32_t *num_samples, uint32_t seconds)
+{
+	struct timeval timeout, now;
+	struct armv7m_common *armv7m = target_to_armv7m(target);
+	uint32_t reg_value;
+	bool use_pcsr = false;
+	int retval = ERROR_OK;
+	struct reg *reg;
+
+	gettimeofday(&timeout, NULL);
+	timeval_add_time(&timeout, seconds, 0);
+
+	retval = target_read_u32(target, DWT_PCSR, &reg_value);
+	if (retval != ERROR_OK) {
+		LOG_ERROR("Error while reading PCSR");
+		return retval;
+	}
+
+	if (reg_value != 0) {
+		use_pcsr = true;
+		LOG_INFO("Starting Cortex-M profiling. Sampling DWT_PCSR as fast as we can...");
+	} else {
+		LOG_INFO("Starting profiling. Halting and resuming the"
+			 " target as often as we can...");
+		reg = register_get_by_name(target->reg_cache, "pc", 1);
+	}
+
+	/* Make sure the target is running */
+	target_poll(target);
+	if (target->state == TARGET_HALTED)
+		retval = target_resume(target, 1, 0, 0, 0);
+
+	if (retval != ERROR_OK) {
+		LOG_ERROR("Error while resuming target");
+		return retval;
+	}
+
+	uint32_t sample_count = 0;
+
+	for (;;) {
+		if (use_pcsr) {
+			if (armv7m && armv7m->debug_ap) {
+				uint32_t read_count = max_num_samples - sample_count;
+				if (read_count > 1024)
+					read_count = 1024;
+
+				retval = mem_ap_read_buf_noincr(armv7m->debug_ap,
+							(void *)&samples[sample_count],
+							4, read_count, DWT_PCSR);
+				sample_count += read_count;
+			} else {
+				target_read_u32(target, DWT_PCSR, &samples[sample_count++]);
+			}
+		} else {
+			target_poll(target);
+			if (target->state == TARGET_HALTED) {
+				reg_value = buf_get_u32(reg->value, 0, 32);
+				/* current pc, addr = 0, do not handle breakpoints, not debugging */
+				retval = target_resume(target, 1, 0, 0, 0);
+				samples[sample_count++] = reg_value;
+				target_poll(target);
+				alive_sleep(10); /* sleep 10ms, i.e. <100 samples/second. */
+			} else if (target->state == TARGET_RUNNING) {
+				/* We want to quickly sample the PC. */
+				retval = target_halt(target);
+			} else {
+				LOG_INFO("Target not halted or running");
+				retval = ERROR_OK;
+				break;
+			}
+		}
+
+		if (retval != ERROR_OK) {
+			LOG_ERROR("Error while reading %s", use_pcsr ? "PCSR" : "target pc");
+			return retval;
+		}
+
+
+		gettimeofday(&now, NULL);
+		if (sample_count >= max_num_samples || timeval_compare(&now, &timeout) > 0) {
+			LOG_INFO("Profiling completed. %" PRIu32 " samples.", sample_count);
+			break;
+		}
+	}
+
+	*num_samples = sample_count;
+	return retval;
+}
+
 
 /* REVISIT cache valid/dirty bits are unmaintained.  We could set "valid"
  * on r/w if the core is not running, and clear on resume or reset ... or
@@ -1739,11 +1832,11 @@ static int cortex_m_dwt_set_reg(struct reg *reg, uint8_t *buf)
 
 struct dwt_reg {
 	uint32_t addr;
-	char *name;
+	const char *name;
 	unsigned size;
 };
 
-static struct dwt_reg dwt_base_regs[] = {
+static const struct dwt_reg dwt_base_regs[] = {
 	{ DWT_CTRL, "dwt_ctrl", 32, },
 	/* NOTE that Erratum 532314 (fixed r2p0) affects CYCCNT:  it wrongly
 	 * increments while the core is asleep.
@@ -1752,7 +1845,7 @@ static struct dwt_reg dwt_base_regs[] = {
 	/* plus some 8 bit counters, useful for profiling with TPIU */
 };
 
-static struct dwt_reg dwt_comp[] = {
+static const struct dwt_reg dwt_comp[] = {
 #define DWT_COMPARATOR(i) \
 		{ DWT_COMP0 + 0x10 * (i), "dwt_" #i "_comp", 32, }, \
 		{ DWT_MASK0 + 0x10 * (i), "dwt_" #i "_mask", 4, }, \
@@ -1761,6 +1854,18 @@ static struct dwt_reg dwt_comp[] = {
 	DWT_COMPARATOR(1),
 	DWT_COMPARATOR(2),
 	DWT_COMPARATOR(3),
+	DWT_COMPARATOR(4),
+	DWT_COMPARATOR(5),
+	DWT_COMPARATOR(6),
+	DWT_COMPARATOR(7),
+	DWT_COMPARATOR(8),
+	DWT_COMPARATOR(9),
+	DWT_COMPARATOR(10),
+	DWT_COMPARATOR(11),
+	DWT_COMPARATOR(12),
+	DWT_COMPARATOR(13),
+	DWT_COMPARATOR(14),
+	DWT_COMPARATOR(15),
 #undef DWT_COMPARATOR
 };
 
@@ -1769,7 +1874,7 @@ static const struct reg_arch_type dwt_reg_type = {
 	.set = cortex_m_dwt_set_reg,
 };
 
-static void cortex_m_dwt_addreg(struct target *t, struct reg *r, struct dwt_reg *d)
+static void cortex_m_dwt_addreg(struct target *t, struct reg *r, const struct dwt_reg *d)
 {
 	struct dwt_reg_state *state;
 
@@ -1794,6 +1899,7 @@ void cortex_m_dwt_setup(struct cortex_m_common *cm, struct target *target)
 	int reg, i;
 
 	target_read_u32(target, DWT_CTRL, &dwtcr);
+	LOG_DEBUG("DWT_CTRL: 0x%" PRIx32, dwtcr);
 	if (!dwtcr) {
 		LOG_DEBUG("no DWT");
 		return;
@@ -1882,6 +1988,11 @@ static void cortex_m_dwt_free(struct target *target)
 #define MVFR0_DEFAULT_M4 0x10110021
 #define MVFR1_DEFAULT_M4 0x11000011
 
+#define MVFR0_DEFAULT_M7_SP 0x10110021
+#define MVFR0_DEFAULT_M7_DP 0x10110221
+#define MVFR1_DEFAULT_M7_SP 0x11000011
+#define MVFR1_DEFAULT_M7_DP 0x12000011
+
 int cortex_m_examine(struct target *target)
 {
 	int retval;
@@ -1894,17 +2005,15 @@ int cortex_m_examine(struct target *target)
 	/* stlink shares the examine handler but does not support
 	 * all its calls */
 	if (!armv7m->stlink) {
-		retval = dap_dp_init(swjdp);
-		if (retval != ERROR_OK) {
-			LOG_ERROR("Could not initialize the debug port");
-			return retval;
-		}
-
-		/* Search for the MEM-AP */
-		retval = dap_find_ap(swjdp, AP_TYPE_AHB_AP, &armv7m->debug_ap);
-		if (retval != ERROR_OK) {
-			LOG_ERROR("Could not find MEM-AP to control the core");
-			return retval;
+		if (cortex_m->apsel == DP_APSEL_INVALID) {
+			/* Search for the MEM-AP */
+			retval = dap_find_ap(swjdp, AP_TYPE_AHB_AP, &armv7m->debug_ap);
+			if (retval != ERROR_OK) {
+				LOG_ERROR("Could not find MEM-AP to control the core");
+				return retval;
+			}
+		} else {
+			armv7m->debug_ap = dap_ap(swjdp, cortex_m->apsel);
 		}
 
 		/* Leave (only) generic DAP stuff for debugport_init(); */
@@ -1928,23 +2037,45 @@ int cortex_m_examine(struct target *target)
 
 		LOG_DEBUG("Cortex-M%d r%" PRId8 "p%" PRId8 " processor detected",
 				i, (uint8_t)((cpuid >> 20) & 0xf), (uint8_t)((cpuid >> 0) & 0xf));
+		if (i == 7) {
+			uint8_t rev, patch;
+			rev = (cpuid >> 20) & 0xf;
+			patch = (cpuid >> 0) & 0xf;
+			if ((rev == 0) && (patch < 2))
+				LOG_WARNING("Silicon bug: single stepping will enter pending exception handler!");
+		}
 		LOG_DEBUG("cpuid: 0x%8.8" PRIx32 "", cpuid);
 
-		/* test for floating point feature on cortex-m4 */
+		/* VECTRESET is not supported on Cortex-M0, M0+ and M1 */
+		cortex_m->vectreset_supported = i > 1;
+
 		if (i == 4) {
 			target_read_u32(target, MVFR0, &mvfr0);
 			target_read_u32(target, MVFR1, &mvfr1);
 
+			/* test for floating point feature on Cortex-M4 */
 			if ((mvfr0 == MVFR0_DEFAULT_M4) && (mvfr1 == MVFR1_DEFAULT_M4)) {
 				LOG_DEBUG("Cortex-M%d floating point feature FPv4_SP found", i);
 				armv7m->fp_feature = FPv4_SP;
+			}
+		} else if (i == 7) {
+			target_read_u32(target, MVFR0, &mvfr0);
+			target_read_u32(target, MVFR1, &mvfr1);
+
+			/* test for floating point features on Cortex-M7 */
+			if ((mvfr0 == MVFR0_DEFAULT_M7_SP) && (mvfr1 == MVFR1_DEFAULT_M7_SP)) {
+				LOG_DEBUG("Cortex-M%d floating point feature FPv5_SP found", i);
+				armv7m->fp_feature = FPv5_SP;
+			} else if ((mvfr0 == MVFR0_DEFAULT_M7_DP) && (mvfr1 == MVFR1_DEFAULT_M7_DP)) {
+				LOG_DEBUG("Cortex-M%d floating point feature FPv5_DP found", i);
+				armv7m->fp_feature = FPv5_DP;
 			}
 		} else if (i == 0) {
 			/* Cortex-M0 does not support unaligned memory access */
 			armv7m->arm.is_armv6m = true;
 		}
 
-		if (armv7m->fp_feature != FPv4_SP &&
+		if (armv7m->fp_feature == FP_NONE &&
 		    armv7m->arm.core_cache->num_regs > ARMV7M_NUM_CORE_REGS_NOFP) {
 			/* free unavailable FPU registers */
 			size_t idx;
@@ -1959,9 +2090,14 @@ int cortex_m_examine(struct target *target)
 			armv7m->arm.core_cache->num_regs = ARMV7M_NUM_CORE_REGS_NOFP;
 		}
 
-		if ((i == 4 || i == 3) && !armv7m->stlink) {
-			/* Cortex-M3/M4 has 4096 bytes autoincrement range */
-			armv7m->debug_ap->tar_autoincr_block = (1 << 12);
+		if (!armv7m->stlink) {
+			if (i == 3 || i == 4)
+				/* Cortex-M3/M4 have 4096 bytes autoincrement range,
+				 * s. ARM IHI 0031C: MEM-AP 7.2.2 */
+				armv7m->debug_ap->tar_autoincr_block = (1 << 12);
+			else if (i == 7)
+				/* Cortex-M7 has only 1024 bytes autoincrement range */
+				armv7m->debug_ap->tar_autoincr_block = (1 << 10);
 		}
 
 		/* Configure trace modules */
@@ -1969,7 +2105,7 @@ int cortex_m_examine(struct target *target)
 		if (retval != ERROR_OK)
 			return retval;
 
-		if (armv7m->trace_config.config_type != DISABLED) {
+		if (armv7m->trace_config.config_type != TRACE_CONFIG_TYPE_DISABLED) {
 			armv7m_trace_tpiu_config(target);
 			armv7m_trace_itm_config(target);
 		}
@@ -1978,7 +2114,6 @@ int cortex_m_examine(struct target *target)
 
 		/* Setup FPB */
 		target_read_u32(target, FP_CTRL, &fpcr);
-		cortex_m->auto_bp_type = 1;
 		/* bits [14:12] and [7:4] */
 		cortex_m->fp_num_code = ((fpcr >> 8) & 0x70) | ((fpcr >> 4) & 0xF);
 		cortex_m->fp_num_lit = (fpcr >> 8) & 0xF;
@@ -2102,25 +2237,17 @@ static int cortex_m_handle_target_request(void *priv)
 }
 
 static int cortex_m_init_arch_info(struct target *target,
-	struct cortex_m_common *cortex_m, struct jtag_tap *tap)
+	struct cortex_m_common *cortex_m, struct adiv5_dap *dap)
 {
 	struct armv7m_common *armv7m = &cortex_m->armv7m;
 
 	armv7m_init_arch_info(target, armv7m);
 
-	/*  tap has no dap initialized */
-	if (!tap->dap) {
-		tap->dap = dap_init();
-
-		/* Leave (only) generic DAP stuff for debugport_init() */
-		tap->dap->tap = tap;
-	}
-
 	/* default reset mode is to use srst if fitted
 	 * if not it will use CORTEX_M3_RESET_VECTRESET */
 	cortex_m->soft_reset_config = CORTEX_M_RESET_VECTRESET;
 
-	armv7m->arm.dap = tap->dap;
+	armv7m->arm.dap = dap;
 
 	/* register arch-specific functions */
 	armv7m->examine_debug_reason = cortex_m_examine_debug_reason;
@@ -2140,9 +2267,16 @@ static int cortex_m_init_arch_info(struct target *target,
 static int cortex_m_target_create(struct target *target, Jim_Interp *interp)
 {
 	struct cortex_m_common *cortex_m = calloc(1, sizeof(struct cortex_m_common));
-
 	cortex_m->common_magic = CORTEX_M_COMMON_MAGIC;
-	cortex_m_init_arch_info(target, cortex_m, target->tap);
+	struct adiv5_private_config *pc;
+
+	pc = (struct adiv5_private_config *)target->private_config;
+	if (adiv5_verify_config(pc) != ERROR_OK)
+		return ERROR_FAIL;
+
+	cortex_m->apsel = pc->ap_num;
+
+	cortex_m_init_arch_info(target, cortex_m, pc->dap);
 
 	return ERROR_OK;
 }
@@ -2165,20 +2299,6 @@ static int cortex_m_verify_pointer(struct command_context *cmd_ctx,
  * cortexm3_target structure, which is only used with CM3 targets.
  */
 
-static const struct {
-	char name[10];
-	unsigned mask;
-} vec_ids[] = {
-	{ "hard_err",   VC_HARDERR, },
-	{ "int_err",    VC_INTERR, },
-	{ "bus_err",    VC_BUSERR, },
-	{ "state_err",  VC_STATERR, },
-	{ "chk_err",    VC_CHKERR, },
-	{ "nocp_err",   VC_NOCPERR, },
-	{ "mm_err",     VC_MMERR, },
-	{ "reset",      VC_CORERESET, },
-};
-
 COMMAND_HANDLER(handle_cortex_m_vector_catch_command)
 {
 	struct target *target = get_current_target(CMD_CTX);
@@ -2186,6 +2306,20 @@ COMMAND_HANDLER(handle_cortex_m_vector_catch_command)
 	struct armv7m_common *armv7m = &cortex_m->armv7m;
 	uint32_t demcr = 0;
 	int retval;
+
+	static const struct {
+		char name[10];
+		unsigned mask;
+	} vec_ids[] = {
+		{ "hard_err",   VC_HARDERR, },
+		{ "int_err",    VC_INTERR, },
+		{ "bus_err",    VC_BUSERR, },
+		{ "state_err",  VC_STATERR, },
+		{ "chk_err",    VC_CHKERR, },
+		{ "nocp_err",   VC_NOCPERR, },
+		{ "mm_err",     VC_MMERR, },
+		{ "reset",      VC_CORERESET, },
+	};
 
 	retval = cortex_m_verify_pointer(CMD_CTX, cortex_m);
 	if (retval != ERROR_OK)
@@ -2306,8 +2440,16 @@ COMMAND_HANDLER(handle_cortex_m_reset_config_command)
 	if (CMD_ARGC > 0) {
 		if (strcmp(*CMD_ARGV, "sysresetreq") == 0)
 			cortex_m->soft_reset_config = CORTEX_M_RESET_SYSRESETREQ;
-		else if (strcmp(*CMD_ARGV, "vectreset") == 0)
-			cortex_m->soft_reset_config = CORTEX_M_RESET_VECTRESET;
+
+		else if (strcmp(*CMD_ARGV, "vectreset") == 0) {
+			if (target_was_examined(target)
+					&& !cortex_m->vectreset_supported)
+				LOG_WARNING("VECTRESET is not supported on your Cortex-M core!");
+			else
+				cortex_m->soft_reset_config = CORTEX_M_RESET_VECTRESET;
+
+		} else
+			return ERROR_COMMAND_SYNTAX_ERROR;
 	}
 
 	switch (cortex_m->soft_reset_config) {
@@ -2349,7 +2491,7 @@ static const struct command_registration cortex_m_exec_command_handlers[] = {
 		.handler = handle_cortex_m_reset_config_command,
 		.mode = COMMAND_ANY,
 		.help = "configure software reset handling",
-		.usage = "['srst'|'sysresetreq'|'vectreset']",
+		.usage = "['sysresetreq'|'vectreset']",
 	},
 	COMMAND_REGISTRATION_DONE
 };
@@ -2387,6 +2529,7 @@ struct target_type cortexm_target = {
 	.deassert_reset = cortex_m_deassert_reset,
 	.soft_reset_halt = cortex_m_soft_reset_halt,
 
+	.get_gdb_arch = arm_get_gdb_arch,
 	.get_gdb_reg_list = armv7m_get_gdb_reg_list,
 
 	.read_memory = cortex_m_read_memory,
@@ -2405,7 +2548,10 @@ struct target_type cortexm_target = {
 
 	.commands = cortex_m_command_handlers,
 	.target_create = cortex_m_target_create,
+	.target_jim_configure = adiv5_jim_configure,
 	.init_target = cortex_m_init_target,
 	.examine = cortex_m_examine,
 	.deinit_target = cortex_m_deinit_target,
+
+	.profiling = cortex_m_profiling,
 };

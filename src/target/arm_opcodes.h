@@ -22,12 +22,11 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the
- * Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef __ARM_OPCODES_H
-#define __ARM_OPCODES_H
+
+#ifndef OPENOCD_TARGET_ARM_OPCODES_H
+#define OPENOCD_TARGET_ARM_OPCODES_H
 
 /**
  * @file
@@ -132,6 +131,30 @@
  * Rm: register holding branch target address
  */
 #define ARMV4_5_BX(Rm) (0xe12fff10 | (Rm))
+
+/* Copies two words from two ARM core registers
+ * into a doubleword extension register, or
+ * from a doubleword extension register to two ARM core registers.
+ * See Armv7-A arch reference manual section A8.8.345
+ * Rt:   Arm core register 1
+ * Rt2:  Arm core register 2
+ * Vm:   The doubleword extension register
+ * M:    m = UInt(M:Vm);
+ * op:   to_arm_registers = (op == ‘1’);
+ */
+#define ARMV4_5_VMOV(op, Rt2, Rt, M, Vm) \
+	(0xec400b10 | ((op) << 20) | ((Rt2) << 16) | \
+	((Rt) << 12) | ((M) << 5) | (Vm))
+
+/* Moves the value of the FPSCR to an ARM core register
+ * Rt: Arm core register
+ */
+#define ARMV4_5_VMRS(Rt) (0xeef10a10 | ((Rt) << 12))
+
+/* Moves the value of an ARM core register to the FPSCR.
+ * Rt: Arm core register
+ */
+#define ARMV4_5_VMSR(Rt) (0xeee10a10 | ((Rt) << 12))
 
 /* Store data from coprocessor to consecutive memory
  * See Armv7-A arch doc section A8.6.187
@@ -311,4 +334,4 @@
 	((0xB660 | (0 << 8) | ((IF)&0x3)) \
 	| ((0xB660 | (0 << 8) | ((IF)&0x3)) << 16))
 
-#endif /* __ARM_OPCODES_H */
+#endif /* OPENOCD_TARGET_ARM_OPCODES_H */

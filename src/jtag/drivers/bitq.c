@@ -13,9 +13,7 @@
 *   GNU General Public License for more details.                          *
 *                                                                         *
 *   You should have received a copy of the GNU General Public License     *
-*   along with this program; if not, write to the                         *
-*   Free Software Foundation, Inc.,                                       *
-*   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+*   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
 ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -125,7 +123,7 @@ static void bitq_path_move(struct pathmove_command *cmd)
 {
 	int i;
 
-	for (i = 0; i <= cmd->num_states; i++) {
+	for (i = 0; i < cmd->num_states; i++) {
 		if (tap_state_transition(tap_get_state(), false) == cmd->path[i])
 			bitq_io(0, 0, 0);
 		else if (tap_state_transition(tap_get_state(), true) == cmd->path[i])

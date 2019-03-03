@@ -22,13 +22,11 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
-#ifndef GDB_SERVER_H
-#define GDB_SERVER_H
+#ifndef OPENOCD_SERVER_GDB_SERVER_H
+#define OPENOCD_SERVER_GDB_SERVER_H
 
 struct image;
 struct reg;
@@ -38,6 +36,7 @@ struct reg;
 
 int gdb_target_add_all(struct target *target);
 int gdb_register_commands(struct command_context *command_context);
+void gdb_service_free(void);
 
 int gdb_put_packet(struct connection *connection, char *buffer, int len);
 
@@ -50,4 +49,4 @@ static inline struct target *get_target_from_connection(struct connection *conne
 #define ERROR_GDB_BUFFER_TOO_SMALL (-800)
 #define ERROR_GDB_TIMEOUT (-801)
 
-#endif	/* GDB_SERVER_H */
+#endif /* OPENOCD_SERVER_GDB_SERVER_H */

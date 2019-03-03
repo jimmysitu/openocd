@@ -13,9 +13,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -237,6 +235,30 @@ static int aice_khz(int khz, int *jtag_speed)
 
 		return ERROR_FAIL;
 	}
+
+	return ERROR_OK;
+}
+
+int aice_scan_jtag_chain(void)
+{
+	LOG_DEBUG("=== %s ===", __func__);
+	uint8_t num_of_idcode = 0;
+	struct target *target;
+
+	int res = aice_port->api->idcode(aice_target_id_codes, &num_of_idcode);
+	if (res != ERROR_OK) {
+		LOG_ERROR("<-- TARGET ERROR! Failed to identify AndesCore "
+					"JTAG Manufacture ID in the JTAG scan chain. "
+					"Failed to access EDM registers. -->");
+		return res;
+	}
+
+	for (uint32_t i = 0; i < num_of_idcode; i++)
+		LOG_DEBUG("id_codes[%d] = 0x%x", i, aice_target_id_codes[i]);
+
+	/* Update tap idcode */
+	for (target = all_targets; target; target = target->next)
+		target->tap->idcode = aice_target_id_codes[target->tap->abs_chain_position];
 
 	return ERROR_OK;
 }

@@ -19,13 +19,13 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
-#ifndef REPLACEMENTS_H
-#define REPLACEMENTS_H
+#ifndef OPENOCD_HELPER_REPLACEMENTS_H
+#define OPENOCD_HELPER_REPLACEMENTS_H
+
+#include <stdint.h>
 
 /* MIN,MAX macros */
 #ifndef MIN
@@ -201,6 +201,17 @@ static inline int close_socket(int sock)
 #endif
 }
 
+static inline void socket_block(int fd)
+{
+#ifdef _WIN32
+	unsigned long nonblock = 0;
+	ioctlsocket(fd, FIONBIO, &nonblock);
+#else
+	int oldopts = fcntl(fd, F_GETFL, 0);
+	fcntl(fd, F_SETFL, oldopts & ~O_NONBLOCK);
+#endif
+}
+
 static inline void socket_nonblock(int fd)
 {
 #ifdef _WIN32
@@ -282,4 +293,4 @@ typedef struct {
 const char *libusb_error_name(int error_code);
 #endif /* defined HAVE_LIBUSB1 && !defined HAVE_LIBUSB_ERROR_NAME */
 
-#endif	/* REPLACEMENTS_H */
+#endif /* OPENOCD_HELPER_REPLACEMENTS_H */

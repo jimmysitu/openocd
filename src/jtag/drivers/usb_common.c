@@ -12,15 +12,14 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
 #include "usb_common.h"
+#include "log.h"
 
 
 static bool jtag_usb_match(struct usb_device *dev,
@@ -47,10 +46,12 @@ int jtag_usb_open(const uint16_t vids[], const uint16_t pids[],
 				continue;
 
 			*out = usb_open(dev);
-			if (NULL == *out)
-				return -errno;
-			return 0;
+			if (NULL == *out) {
+				LOG_ERROR("usb_open() failed with %s", usb_strerror());
+				return ERROR_FAIL;
+			}
+			return ERROR_OK;
 		}
 	}
-	return -ENODEV;
+	return ERROR_FAIL;
 }

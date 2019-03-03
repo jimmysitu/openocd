@@ -12,6 +12,8 @@
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
  *   GNU General Public License for more details.                          *
  *                                                                         *
+ *   You should have received a copy of the GNU General Public License     *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 /***************************************************************************
@@ -101,13 +103,6 @@ static int aducm360_build_sector_list(struct flash_bank *bank)
 }
 
 /* ----------------------------------------------------------------------- */
-static int aducm360_protect_check(struct flash_bank *bank)
-{
-	LOG_WARNING("aducm360_protect_check not implemented.");
-	return ERROR_OK;
-}
-
-/* ----------------------------------------------------------------------- */
 static int aducm360_mass_erase(struct target *target)
 {
 	uint32_t		value;
@@ -190,13 +185,6 @@ static int aducm360_erase(struct flash_bank *bank, int first, int last)
 	}
 
 	return res;
-}
-
-/* ----------------------------------------------------------------------- */
-static int aducm360_protect(struct flash_bank *bank, int set, int first, int last)
-{
-	LOG_ERROR("aducm360_protect not implemented.");
-	return ERROR_FLASH_OPERATION_FAILED;
 }
 
 /* ----------------------------------------------------------------------- */
@@ -549,7 +537,7 @@ static int aducm360_check_flash_completion(struct target *target, unsigned int t
 {
 	uint32_t v = 1;
 
-	long long endtime = timeval_ms() + timeout_ms;
+	int64_t endtime = timeval_ms() + timeout_ms;
 	while (1) {
 		target_read_u32(target, ADUCM360_FLASH_BASE+ADUCM360_FLASH_FEESTA, &v);
 		if ((v & 0x00000001) == 0)
@@ -570,11 +558,9 @@ struct flash_driver aducm360_flash = {
 	.name = "aducm360",
 	.flash_bank_command = aducm360_flash_bank_command,
 	.erase = aducm360_erase,
-	.protect = aducm360_protect,
 	.write = aducm360_write,
 	.read = default_flash_read,
 	.probe = aducm360_probe,
 	.auto_probe = aducm360_probe,
 	.erase_check = default_flash_blank_check,
-	.protect_check = aducm360_protect_check,
 };

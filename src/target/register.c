@@ -16,9 +16,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -46,6 +44,8 @@ struct reg *register_get_by_name(struct reg_cache *first,
 
 	while (cache) {
 		for (i = 0; i < cache->num_regs; i++) {
+			if (cache->reg_list[i].exist == false)
+				continue;
 			if (strcmp(cache->reg_list[i].name, name) == 0)
 				return &(cache->reg_list[i]);
 		}
@@ -86,6 +86,8 @@ void register_cache_invalidate(struct reg_cache *cache)
 	struct reg *reg = cache->reg_list;
 
 	for (unsigned n = cache->num_regs; n != 0; n--, reg++) {
+		if (reg->exist == false)
+			continue;
 		reg->valid = 0;
 		reg->dirty = 0;
 	}

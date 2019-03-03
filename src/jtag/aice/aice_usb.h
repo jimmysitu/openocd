@@ -13,12 +13,11 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
-#ifndef __AICE_USB_H__
-#define __AICE_USB_H__
+
+#ifndef OPENOCD_JTAG_AICE_AICE_USB_H
+#define OPENOCD_JTAG_AICE_AICE_USB_H
 
 #include "aice_port.h"
 
@@ -72,6 +71,7 @@
 
 /* Constants for AICE command WRITE_CTRL:TCK_CONTROL */
 #define AICE_TCK_CONTROL_TCK3048		0x08
+#define AICE_TCK_CONTROL_TCK_SCAN		0x10
 
 /* Constants for AICE command WRITE_CTRL:JTAG_PIN_CONTROL */
 #define AICE_JTAG_PIN_CONTROL_SRST		0x01
@@ -130,4 +130,4 @@ extern struct aice_port_api_s aice_usb_api;
 int aice_read_ctrl(uint32_t address, uint32_t *data);
 int aice_write_ctrl(uint32_t address, uint32_t data);
 
-#endif
+#endif /* OPENOCD_JTAG_AICE_AICE_USB_H */

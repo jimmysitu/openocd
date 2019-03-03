@@ -13,9 +13,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 /***************************************************************************
@@ -169,6 +167,7 @@ static int lpc288x_read_part_info(struct flash_bank *bank)
 	return ERROR_OK;
 }
 
+/* TODO: Revisit! Is it impossible to read protection status? */
 static int lpc288x_protect_check(struct flash_bank *bank)
 {
 	return ERROR_OK;
@@ -230,17 +229,6 @@ static uint32_t lpc288x_system_ready(struct flash_bank *bank)
 		LOG_ERROR("Target not halted");
 		return ERROR_TARGET_NOT_HALTED;
 	}
-	return ERROR_OK;
-}
-
-static int lpc288x_erase_check(struct flash_bank *bank)
-{
-	uint32_t status = lpc288x_system_ready(bank);	/* probed? halted? */
-	if (status != ERROR_OK) {
-		LOG_INFO("Processor not halted/not probed");
-		return status;
-	}
-
 	return ERROR_OK;
 }
 
@@ -433,6 +421,7 @@ struct flash_driver lpc288x_flash = {
 	.read = default_flash_read,
 	.probe = lpc288x_probe,
 	.auto_probe = lpc288x_probe,
-	.erase_check = lpc288x_erase_check,
+	.erase_check = default_flash_blank_check,
 	.protect_check = lpc288x_protect_check,
+	.free_driver_priv = default_flash_free_driver_priv,
 };

@@ -12,10 +12,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
- *                                                                         *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
  /*
@@ -506,6 +503,9 @@ static int mrvlqspi_bulk_erase(struct flash_bank *bank)
 	int retval;
 	struct mrvlqspi_flash_bank *mrvlqspi_info = bank->driver_priv;
 
+	if (mrvlqspi_info->dev->chip_erase_cmd == 0x00)
+		return ERROR_FLASH_OPER_UNSUPPORTED;
+
 	/* Set flash write enable */
 	retval = mrvlqspi_set_write_status(bank, WRITE_ENABLE);
 	if (retval != ERROR_OK)
@@ -573,6 +573,9 @@ static int mrvlqspi_flash_erase(struct flash_bank *bank, int first, int last)
 				" Falling back to sector-by-sector erase.");
 	}
 
+	if (mrvlqspi_info->dev->erase_cmd == 0x00)
+		return ERROR_FLASH_OPER_UNSUPPORTED;
+
 	for (sector = first; sector <= last; sector++) {
 		retval = mrvlqspi_block_erase(bank,
 				sector * mrvlqspi_info->dev->sectorsize);
@@ -622,7 +625,9 @@ static int mrvlqspi_flash_write(struct flash_bank *bank, const uint8_t *buffer,
 		}
 	}
 
-	page_size = mrvlqspi_info->dev->pagesize;
+	/* if no valid page_size, use reasonable default */
+	page_size = mrvlqspi_info->dev->pagesize ?
+		mrvlqspi_info->dev->pagesize : SPIFLASH_DEF_PAGESIZE;
 
 	/* See contrib/loaders/flash/mrvlqspi.S for src */
 	static const uint8_t mrvlqspi_flash_write_code[] = {
@@ -680,7 +685,7 @@ static int mrvlqspi_flash_write(struct flash_bank *bank, const uint8_t *buffer,
 			" a working area > %zdB in order to write to SPIFI flash.",
 			sizeof(mrvlqspi_flash_write_code));
 		return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
-	};
+	}
 
 	retval = target_write_buffer(target, write_algorithm->address,
 			sizeof(mrvlqspi_flash_write_code),
@@ -714,7 +719,7 @@ static int mrvlqspi_flash_write(struct flash_bank *bank, const uint8_t *buffer,
 	if (target_alloc_working_area(target, fifo_size, &fifo) != ERROR_OK) {
 		target_free_working_area(target, write_algorithm);
 		return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
-	};
+	}
 
 	armv7m_info.common_magic = ARMV7M_COMMON_MAGIC;
 	armv7m_info.core_mode = ARM_MODE_THREAD;
@@ -829,6 +834,7 @@ static int mrvlqspi_probe(struct flash_bank *bank)
 	uint32_t id = 0;
 	int retval;
 	struct flash_sector *sectors;
+	uint32_t sectorsize;
 
 	/* If we've already probed, we should be fine to skip this time. */
 	if (mrvlqspi_info->probed)
@@ -862,12 +868,20 @@ static int mrvlqspi_probe(struct flash_bank *bank)
 	LOG_INFO("Found flash device \'%s\' ID 0x%08" PRIx32,
 		mrvlqspi_info->dev->name, mrvlqspi_info->dev->device_id);
 
+
 	/* Set correct size value */
 	bank->size = mrvlqspi_info->dev->size_in_bytes;
+	if (bank->size <= (1UL << 16))
+		LOG_WARNING("device needs 2-byte addresses - not implemented");
+	if (bank->size > (1UL << 24))
+		LOG_WARNING("device needs paging or 4-byte addresses - not implemented");
+
+	/* if no sectors, treat whole bank as single sector */
+	sectorsize = mrvlqspi_info->dev->sectorsize ?
+		mrvlqspi_info->dev->sectorsize : mrvlqspi_info->dev->size_in_bytes;
 
 	/* create and fill sectors array */
-	bank->num_sectors = mrvlqspi_info->dev->size_in_bytes /
-					mrvlqspi_info->dev->sectorsize;
+	bank->num_sectors = mrvlqspi_info->dev->size_in_bytes / sectorsize;
 	sectors = malloc(sizeof(struct flash_sector) * bank->num_sectors);
 	if (sectors == NULL) {
 		LOG_ERROR("not enough memory");
@@ -875,9 +889,8 @@ static int mrvlqspi_probe(struct flash_bank *bank)
 	}
 
 	for (int sector = 0; sector < bank->num_sectors; sector++) {
-		sectors[sector].offset =
-				sector * mrvlqspi_info->dev->sectorsize;
-		sectors[sector].size = mrvlqspi_info->dev->sectorsize;
+		sectors[sector].offset = sector * sectorsize;
+		sectors[sector].size = sectorsize;
 		sectors[sector].is_erased = -1;
 		sectors[sector].is_protected = 0;
 	}
@@ -897,12 +910,6 @@ static int mrvlqspi_auto_probe(struct flash_bank *bank)
 }
 
 static int mrvlqspi_flash_erase_check(struct flash_bank *bank)
-{
-	/* Not implemented yet */
-	return ERROR_OK;
-}
-
-static int mrvlqspi_protect_check(struct flash_bank *bank)
 {
 	/* Not implemented yet */
 	return ERROR_OK;
@@ -950,12 +957,11 @@ struct flash_driver mrvlqspi_flash = {
 	.name = "mrvlqspi",
 	.flash_bank_command = mrvlqspi_flash_bank_command,
 	.erase = mrvlqspi_flash_erase,
-	.protect = NULL,
 	.write = mrvlqspi_flash_write,
 	.read = mrvlqspi_flash_read,
 	.probe = mrvlqspi_probe,
 	.auto_probe = mrvlqspi_auto_probe,
 	.erase_check = mrvlqspi_flash_erase_check,
-	.protect_check = mrvlqspi_protect_check,
 	.info = mrvlqspi_get_info,
+	.free_driver_priv = default_flash_free_driver_priv,
 };

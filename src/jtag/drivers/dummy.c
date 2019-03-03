@@ -13,9 +13,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -35,14 +33,14 @@ static int clock_count;		/* count clocks in any stable state, only stable states
 
 static uint32_t dummy_data;
 
-static int dummy_read(void)
+static bb_value_t dummy_read(void)
 {
 	int data = 1 & dummy_data;
 	dummy_data = (dummy_data >> 1) | (1 << 31);
-	return data;
+	return data ? BB_HIGH : BB_LOW;
 }
 
-static void dummy_write(int tck, int tms, int tdi)
+static int dummy_write(int tck, int tms, int tdi)
 {
 	/* TAP standard: "state transitions occur on rising edge of clock" */
 	if (tck != dummy_clock) {
@@ -71,9 +69,10 @@ static void dummy_write(int tck, int tms, int tdi)
 		}
 		dummy_clock = tck;
 	}
+	return ERROR_OK;
 }
 
-static void dummy_reset(int trst, int srst)
+static int dummy_reset(int trst, int srst)
 {
 	dummy_clock = 0;
 
@@ -81,10 +80,12 @@ static void dummy_reset(int trst, int srst)
 		dummy_state = TAP_RESET;
 
 	LOG_DEBUG("reset to: %s", tap_state_name(dummy_state));
+	return ERROR_OK;
 }
 
-static void dummy_led(int on)
+static int dummy_led(int on)
 {
+	return ERROR_OK;
 }
 
 static struct bitbang_interface dummy_bitbang = {

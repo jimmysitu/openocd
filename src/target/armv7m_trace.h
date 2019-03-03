@@ -10,10 +10,13 @@
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
  *   GNU General Public License for more details.                          *
+ *                                                                         *
+ *   You should have received a copy of the GNU General Public License     *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
-#ifndef ARMV7M_TRACE_H
-#define ARMV7M_TRACE_H
+#ifndef OPENOCD_TARGET_ARMV7M_TRACE_H
+#define OPENOCD_TARGET_ARMV7M_TRACE_H
 
 #include <target/target.h>
 #include <command.h>
@@ -24,15 +27,15 @@
  */
 
 enum trace_config_type {
-	DISABLED,	/**< tracing is disabled */
-	EXTERNAL,	/**< trace output is captured externally */
-	INTERNAL	/**< trace output is handled by OpenOCD adapter driver */
+	TRACE_CONFIG_TYPE_DISABLED,	/**< tracing is disabled */
+	TRACE_CONFIG_TYPE_EXTERNAL,	/**< trace output is captured externally */
+	TRACE_CONFIG_TYPE_INTERNAL	/**< trace output is handled by OpenOCD adapter driver */
 };
 
-enum tpio_pin_protocol {
-	SYNC,			/**< synchronous trace output */
-	ASYNC_MANCHESTER,	/**< asynchronous output with Manchester coding */
-	ASYNC_UART		/**< asynchronous output with NRZ coding */
+enum tpiu_pin_protocol {
+	TPIU_PIN_PROTOCOL_SYNC,			/**< synchronous trace output */
+	TPIU_PIN_PROTOCOL_ASYNC_MANCHESTER,	/**< asynchronous output with Manchester coding */
+	TPIU_PIN_PROTOCOL_ASYNC_UART		/**< asynchronous output with NRZ coding */
 };
 
 enum itm_ts_prescaler {
@@ -47,7 +50,7 @@ struct armv7m_trace_config {
 	enum trace_config_type config_type;
 
 	/** Currently active trace output mode */
-	enum tpio_pin_protocol pin_protocol;
+	enum tpiu_pin_protocol pin_protocol;
 	/** TPIU formatter enable/disable (in async mode) */
 	bool formatter;
 	/** Synchronous output port width */
@@ -85,4 +88,4 @@ int armv7m_trace_tpiu_config(struct target *target);
  */
 int armv7m_trace_itm_config(struct target *target);
 
-#endif
+#endif /* OPENOCD_TARGET_ARMV7M_TRACE_H */

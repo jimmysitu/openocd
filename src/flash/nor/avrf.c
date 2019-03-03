@@ -13,9 +13,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -68,6 +66,7 @@ static const struct avrf_type avft_chips_info[] = {
  *			eeprom_page_size, eeprom_page_num
  */
 	{"atmega128", 0x9702, 256, 512, 8, 512},
+	{"atmega128rfa1", 0xa701, 128, 512, 8, 512},
 	{"at90can128", 0x9781, 256, 512, 8, 512},
 	{"at90usb128", 0x9782, 256, 512, 8, 512},
 	{"atmega164p", 0x940a, 128, 128, 4, 128},
@@ -234,12 +233,6 @@ static int avrf_erase(struct flash_bank *bank, int first, int last)
 	return avr_jtagprg_leaveprogmode(avr);
 }
 
-static int avrf_protect(struct flash_bank *bank, int set, int first, int last)
-{
-	LOG_INFO("%s", __func__);
-	return ERROR_OK;
-}
-
 static int avrf_write(struct flash_bank *bank, const uint8_t *buffer, uint32_t offset, uint32_t count)
 {
 	struct target *target = bank->target;
@@ -339,7 +332,7 @@ static int avrf_probe(struct flash_bank *bank)
 			bank->sectors[i].offset = i * avr_info->flash_page_size;
 			bank->sectors[i].size = avr_info->flash_page_size;
 			bank->sectors[i].is_erased = -1;
-			bank->sectors[i].is_protected = 1;
+			bank->sectors[i].is_protected = -1;
 		}
 
 		avrf_info->probed = 1;
@@ -359,12 +352,6 @@ static int avrf_auto_probe(struct flash_bank *bank)
 	if (avrf_info->probed)
 		return ERROR_OK;
 	return avrf_probe(bank);
-}
-
-static int avrf_protect_check(struct flash_bank *bank)
-{
-	LOG_INFO("%s", __func__);
-	return ERROR_OK;
 }
 
 static int avrf_info(struct flash_bank *bank, char *buf, int buf_size)
@@ -480,12 +467,11 @@ struct flash_driver avr_flash = {
 	.commands = avrf_command_handlers,
 	.flash_bank_command = avrf_flash_bank_command,
 	.erase = avrf_erase,
-	.protect = avrf_protect,
 	.write = avrf_write,
 	.read = default_flash_read,
 	.probe = avrf_probe,
 	.auto_probe = avrf_auto_probe,
 	.erase_check = default_flash_blank_check,
-	.protect_check = avrf_protect_check,
 	.info = avrf_info,
+	.free_driver_priv = default_flash_free_driver_priv,
 };

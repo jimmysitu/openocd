@@ -19,13 +19,15 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
-#ifndef SERVER_H
-#define SERVER_H
+#ifndef OPENOCD_SERVER_SERVER_H
+#define OPENOCD_SERVER_SERVER_H
+
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
 
 #include <helper/log.h>
 
@@ -76,10 +78,12 @@ int add_service(char *name, const char *port,
 		int max_connections, new_connection_handler_t new_connection_handler,
 		input_handler_t in_handler, connection_closed_handler_t close_handler,
 		void *priv);
+int remove_service(const char *name, const char *port);
 
 int server_preinit(void);
 int server_init(struct command_context *cmd_ctx);
 int server_quit(void);
+void server_free(void);
 void exit_on_signal(int);
 
 int server_loop(struct command_context *command_context);
@@ -111,4 +115,4 @@ COMMAND_HELPER(server_port_command, unsigned short *out);
 #define ERROR_SERVER_REMOTE_CLOSED		(-400)
 #define ERROR_CONNECTION_REJECTED		(-401)
 
-#endif	/* SERVER_H */
+#endif /* OPENOCD_SERVER_SERVER_H */

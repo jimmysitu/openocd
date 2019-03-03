@@ -13,9 +13,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -56,21 +54,6 @@ struct lpcspifi_flash_bank {
 	uint32_t bank_num;
 	uint32_t max_spi_clock_mhz;
 	const struct flash_device *dev;
-};
-
-struct lpcspifi_target {
-	char *name;
-	uint32_t tap_idcode;
-	uint32_t spifi_base;
-	uint32_t ssp_base;
-	uint32_t io_base;
-	uint32_t ioconfig_base; /* base address for the port word pin registers */
-};
-
-static const struct lpcspifi_target target_devices[] = {
-	/* name,          tap_idcode, spifi_base, ssp_base,   io_base,    ioconfig_base */
-	{ "LPC43xx/18xx", 0x4ba00477, 0x14000000, 0x40083000, 0x400F4000, 0x40086000 },
-	{ NULL,           0,          0,          0,          0,          0 }
 };
 
 /* flash_bank lpcspifi <base> <size> <chip_width> <bus_width> <target>
@@ -123,7 +106,7 @@ static int ssp_setcs(struct target *target, uint32_t io_base, unsigned int value
  * and the controller is idle. */
 static int poll_ssp_busy(struct target *target, uint32_t ssp_base, int timeout)
 {
-	long long endtime;
+	int64_t endtime;
 	uint32_t value;
 	int retval;
 
@@ -203,7 +186,7 @@ static int lpcspifi_set_hw_mode(struct flash_bank *bank)
 		return retval;
 	}
 
-	LOG_DEBUG("Writing algorithm to working area at 0x%08" PRIx32,
+	LOG_DEBUG("Writing algorithm to working area at 0x%08" TARGET_PRIxADDR,
 		spifi_init_algorithm->address);
 	/* Write algorithm to working area */
 	retval = target_write_buffer(target,
@@ -342,7 +325,7 @@ static int wait_till_ready(struct flash_bank *bank, int timeout)
 {
 	uint32_t status;
 	int retval;
-	long long endtime;
+	int64_t endtime;
 
 	endtime = timeval_ms() + timeout;
 	do {
@@ -403,6 +386,9 @@ static int lpcspifi_bulk_erase(struct flash_bank *bank)
 	uint32_t io_base = lpcspifi_info->io_base;
 	uint32_t value;
 	int retval = ERROR_OK;
+
+	if (lpcspifi_info->dev->chip_erase_cmd == 0x00)
+		return ERROR_FLASH_OPER_UNSUPPORTED;
 
 	retval = lpcspifi_set_sw_mode(bank);
 
@@ -476,6 +462,9 @@ static int lpcspifi_erase(struct flash_bank *bank, int first, int last)
 		} else
 			LOG_WARNING("Bulk flash erase failed. Falling back to sector-by-sector erase.");
 	}
+
+	if (lpcspifi_info->dev->erase_cmd == 0x00)
+		return ERROR_FLASH_OPER_UNSUPPORTED;
 
 	retval = lpcspifi_set_hw_mode(bank);
 	if (retval != ERROR_OK)
@@ -630,7 +619,9 @@ static int lpcspifi_write(struct flash_bank *bank, const uint8_t *buffer,
 		}
 	}
 
-	page_size = lpcspifi_info->dev->pagesize;
+	/* if no valid page_size, use reasonable default */
+	page_size = lpcspifi_info->dev->pagesize ?
+		lpcspifi_info->dev->pagesize : SPIFLASH_DEF_PAGESIZE;
 
 	retval = lpcspifi_set_hw_mode(bank);
 	if (retval != ERROR_OK)
@@ -698,7 +689,7 @@ static int lpcspifi_write(struct flash_bank *bank, const uint8_t *buffer,
 			" a working area > %zdB in order to write to SPIFI flash.",
 			sizeof(lpcspifi_flash_write_code));
 		return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
-	};
+	}
 
 	retval = target_write_buffer(target, write_algorithm->address,
 			sizeof(lpcspifi_flash_write_code),
@@ -734,7 +725,7 @@ static int lpcspifi_write(struct flash_bank *bank, const uint8_t *buffer,
 	if (target_alloc_working_area(target, fifo_size, &fifo) != ERROR_OK) {
 		target_free_working_area(target, write_algorithm);
 		return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
-	};
+	}
 
 	armv7m_info.common_magic = ARMV7M_COMMON_MAGIC;
 	armv7m_info.core_mode = ARM_MODE_THREAD;
@@ -852,40 +843,21 @@ static int lpcspifi_read_flash_id(struct flash_bank *bank, uint32_t *id)
 
 static int lpcspifi_probe(struct flash_bank *bank)
 {
-	struct target *target = bank->target;
 	struct lpcspifi_flash_bank *lpcspifi_info = bank->driver_priv;
-	uint32_t ssp_base;
-	uint32_t io_base;
-	uint32_t ioconfig_base;
 	struct flash_sector *sectors;
 	uint32_t id = 0; /* silence uninitialized warning */
-	const struct lpcspifi_target *target_device;
 	int retval;
+	uint32_t sectorsize;
 
 	/* If we've already probed, we should be fine to skip this time. */
 	if (lpcspifi_info->probed)
 		return ERROR_OK;
 	lpcspifi_info->probed = 0;
 
-	for (target_device = target_devices ; target_device->name ; ++target_device)
-		if (target_device->tap_idcode == target->tap->idcode)
-			break;
-	if (!target_device->name) {
-		LOG_ERROR("Device ID 0x%" PRIx32 " is not known as SPIFI capable",
-				target->tap->idcode);
-		return ERROR_FAIL;
-	}
-
-	ssp_base = target_device->ssp_base;
-	io_base = target_device->io_base;
-	ioconfig_base = target_device->ioconfig_base;
-	lpcspifi_info->ssp_base = ssp_base;
-	lpcspifi_info->io_base = io_base;
-	lpcspifi_info->ioconfig_base = ioconfig_base;
+	lpcspifi_info->ssp_base = 0x40083000;
+	lpcspifi_info->io_base = 0x400F4000;
+	lpcspifi_info->ioconfig_base = 0x40086000;
 	lpcspifi_info->bank_num = bank->bank_number;
-
-	LOG_DEBUG("Valid SPIFI on device %s at address 0x%" PRIx32,
-		target_device->name, bank->base);
 
 	/* read and decode flash ID; returns in SW mode */
 	retval = lpcspifi_read_flash_id(bank, &id);
@@ -913,10 +885,17 @@ static int lpcspifi_probe(struct flash_bank *bank)
 
 	/* Set correct size value */
 	bank->size = lpcspifi_info->dev->size_in_bytes;
+	if (bank->size <= (1UL << 16))
+		LOG_WARNING("device needs 2-byte addresses - not implemented");
+	if (bank->size > (1UL << 24))
+		LOG_WARNING("device needs paging or 4-byte addresses - not implemented");
+
+	/* if no sectors, treat whole bank as single sector */
+	sectorsize = lpcspifi_info->dev->sectorsize ?
+		lpcspifi_info->dev->sectorsize : lpcspifi_info->dev->size_in_bytes;
 
 	/* create and fill sectors array */
-	bank->num_sectors =
-		lpcspifi_info->dev->size_in_bytes / lpcspifi_info->dev->sectorsize;
+	bank->num_sectors = lpcspifi_info->dev->size_in_bytes / sectorsize;
 	sectors = malloc(sizeof(struct flash_sector) * bank->num_sectors);
 	if (sectors == NULL) {
 		LOG_ERROR("not enough memory");
@@ -924,8 +903,8 @@ static int lpcspifi_probe(struct flash_bank *bank)
 	}
 
 	for (int sector = 0; sector < bank->num_sectors; sector++) {
-		sectors[sector].offset = sector * lpcspifi_info->dev->sectorsize;
-		sectors[sector].size = lpcspifi_info->dev->sectorsize;
+		sectors[sector].offset = sector * sectorsize;
+		sectors[sector].size = sectorsize;
 		sectors[sector].is_erased = -1;
 		sectors[sector].is_protected = 0;
 	}
@@ -979,4 +958,5 @@ struct flash_driver lpcspifi_flash = {
 	.erase_check = default_flash_blank_check,
 	.protect_check = lpcspifi_protect_check,
 	.info = get_lpcspifi_info,
+	.free_driver_priv = default_flash_free_driver_priv,
 };

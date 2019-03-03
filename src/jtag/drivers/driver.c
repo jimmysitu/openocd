@@ -23,9 +23,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -55,18 +53,6 @@ static void jtag_callback_queue_reset(void)
 {
 	jtag_callback_queue_head = NULL;
 	jtag_callback_queue_tail = NULL;
-}
-
-/**
- * Copy a struct scan_field for insertion into the queue.
- *
- * This allocates a new copy of out_value using cmd_queue_alloc.
- */
-static void cmd_queue_scan_field_clone(struct scan_field *dst, const struct scan_field *src)
-{
-	dst->num_bits	= src->num_bits;
-	dst->out_value	= buf_cpy(src->out_value, cmd_queue_alloc(DIV_ROUND_UP(src->num_bits, 8)), src->num_bits);
-	dst->in_value	= src->in_value;
 }
 
 /**
@@ -103,7 +89,7 @@ int interface_jtag_add_ir_scan(struct jtag_tap *active,
 			/* if TAP is listed in input fields, copy the value */
 			tap->bypass = 0;
 
-			cmd_queue_scan_field_clone(field, in_fields);
+			jtag_scan_field_clone(field, in_fields);
 		} else {
 			/* if a TAP isn't listed in input fields, set it to BYPASS */
 
@@ -170,7 +156,7 @@ int interface_jtag_add_dr_scan(struct jtag_tap *active, int in_num_fields,
 #endif /* NDEBUG */
 
 			for (int j = 0; j < in_num_fields; j++) {
-				cmd_queue_scan_field_clone(field, in_fields + j);
+				jtag_scan_field_clone(field, in_fields + j);
 
 				field++;
 			}

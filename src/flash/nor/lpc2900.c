@@ -13,9 +13,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -556,7 +554,7 @@ COMMAND_HANDLER(lpc2900_handle_read_custom_command)
 	target_write_u32(target, FCTR, FCTR_FS_CS | FCTR_FS_WEB);
 
 	/* Try and open the file */
-	struct fileio fileio;
+	struct fileio *fileio;
 	const char *filename = CMD_ARGV[1];
 	int ret = fileio_open(&fileio, filename, FILEIO_WRITE, FILEIO_BINARY);
 	if (ret != ERROR_OK) {
@@ -565,14 +563,14 @@ COMMAND_HANDLER(lpc2900_handle_read_custom_command)
 	}
 
 	size_t nwritten;
-	ret = fileio_write(&fileio, sizeof(customer), customer, &nwritten);
+	ret = fileio_write(fileio, sizeof(customer), customer, &nwritten);
 	if (ret != ERROR_OK) {
 		LOG_ERROR("Write operation to file %s failed", filename);
-		fileio_close(&fileio);
+		fileio_close(fileio);
 		return ret;
 	}
 
-	fileio_close(&fileio);
+	fileio_close(fileio);
 
 	return ERROR_OK;
 }
@@ -1037,18 +1035,13 @@ static int lpc2900_erase(struct flash_bank *bank, int first, int last)
 	return ERROR_OK;
 }
 
-static int lpc2900_protect(struct flash_bank *bank, int set, int first, int last)
-{
-	/* This command is not supported.
-	* "Protection" in LPC2900 terms is handled transparently. Sectors will
-	* automatically be unprotected as needed.
-	* Instead we use the concept of sector security. A secured sector is shown
-	* as "protected" in OpenOCD. Sector security is a permanent feature, and
-	* cannot be disabled once activated.
-	*/
-
-	return ERROR_OK;
-}
+/* lpc2900_protect command is not supported.
+* "Protection" in LPC2900 terms is handled transparently. Sectors will
+* automatically be unprotected as needed.
+* Instead we use the concept of sector security. A secured sector is shown
+* as "protected" in OpenOCD. Sector security is a permanent feature, and
+* cannot be disabled once activated.
+*/
 
 /**
  * Write data to flash.
@@ -1160,7 +1153,6 @@ static int lpc2900_write(struct flash_bank *bank, const uint8_t *buffer,
 			break;
 		}
 	}
-	;
 
 	if (warea) {
 		struct reg_param reg_params[5];
@@ -1594,11 +1586,11 @@ struct flash_driver lpc2900_flash = {
 	.commands = lpc2900_command_handlers,
 	.flash_bank_command = lpc2900_flash_bank_command,
 	.erase = lpc2900_erase,
-	.protect = lpc2900_protect,
 	.write = lpc2900_write,
 	.read = default_flash_read,
 	.probe = lpc2900_probe,
 	.auto_probe = lpc2900_probe,
 	.erase_check = lpc2900_erase_check,
 	.protect_check = lpc2900_protect_check,
+	.free_driver_priv = default_flash_free_driver_priv,
 };

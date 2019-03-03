@@ -23,9 +23,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -151,14 +149,14 @@ COMMAND_HANDLER(handle_interface_command)
 
 		jtag_interface = jtag_interfaces[i];
 
-	/* LEGACY SUPPORT ... adapter drivers  must declare what
-	 * transports they allow.  Until they all do so, assume
-	 * the legacy drivers are JTAG-only
-	 */
-	if (!jtag_interface->transports)
-		LOG_WARNING("Adapter driver '%s' did not declare "
-			"which transports it allows; assuming "
-			"legacy JTAG-only", jtag_interface->name);
+		/* LEGACY SUPPORT ... adapter drivers  must declare what
+		 * transports they allow.  Until they all do so, assume
+		 * the legacy drivers are JTAG-only
+		 */
+		if (!jtag_interface->transports)
+			LOG_WARNING("Adapter driver '%s' did not declare "
+				"which transports it allows; assuming "
+				"legacy JTAG-only", jtag_interface->name);
 		retval = allow_transports(CMD_CTX, jtag_interface->transports
 						? jtag_interface->transports : jtag_only);
 			if (ERROR_OK != retval)

@@ -14,13 +14,11 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
-#ifndef JTAG_LIBUSB_COMMON_H
-#define JTAG_LIBUSB_COMMON_H
+#ifndef OPENOCD_JTAG_DRIVERS_LIBUSB0_COMMON_H
+#define OPENOCD_JTAG_DRIVERS_LIBUSB0_COMMON_H
 
 #include <usb.h>
 
@@ -40,6 +38,7 @@
 #define LIBUSB_RECIPIENT_DEVICE			USB_RECIP_DEVICE
 #define LIBUSB_ENDPOINT_OUT				USB_ENDPOINT_OUT
 #define LIBUSB_ENDPOINT_IN				USB_ENDPOINT_IN
+#define LIBUSB_TRANSFER_TYPE_BULK		USB_ENDPOINT_TYPE_BULK
 
 static inline int jtag_libusb_claim_interface(jtag_libusb_device_handle *devh,
 				       int iface)
@@ -69,7 +68,7 @@ int jtag_libusb_set_configuration(jtag_libusb_device_handle *devh,
 int jtag_libusb_choose_interface(struct jtag_libusb_device_handle *devh,
 		unsigned int *usb_read_ep,
 		unsigned int *usb_write_ep,
-		int bclass, int subclass, int protocol);
+		int bclass, int subclass, int protocol, int trans_type);
 int jtag_libusb_get_pid(struct jtag_libusb_device *dev, uint16_t *pid);
 
-#endif /* JTAG_USB_COMMON_H */
+#endif /* OPENOCD_JTAG_DRIVERS_LIBUSB0_COMMON_H */

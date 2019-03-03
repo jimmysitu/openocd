@@ -16,13 +16,11 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
-#ifndef FLASH_NOR_DRIVER_H
-#define FLASH_NOR_DRIVER_H
+#ifndef OPENOCD_FLASH_NOR_DRIVER_H
+#define OPENOCD_FLASH_NOR_DRIVER_H
 
 struct flash_bank;
 
@@ -111,6 +109,8 @@ struct flash_driver {
 	/**
 	 * Bank/sector protection routine (target-specific).
 	 *
+	 * If protection is not implemented, set method to NULL
+	 *
 	 * When called, the driver should enable/disable protection
 	 * for MINIMUM the range covered by first..last sectors
 	 * inclusive. Some chips have alignment requirements will
@@ -180,6 +180,8 @@ struct flash_driver {
 	 * flash_sector_s::is_protected field for each of the flash
 	 * bank's sectors.
 	 *
+	 * If protection is not implemented, set method to NULL
+	 *
 	 * @param bank - the bank to check
 	 * @returns ERROR_OK if successful; otherwise, an error code.
 	 */
@@ -211,6 +213,14 @@ struct flash_driver {
 	 * @returns ERROR_OK if successful; otherwise, an error code.
 	 */
 	int (*auto_probe)(struct flash_bank *bank);
+
+	/**
+	 * Deallocates private driver structures.
+	 * Use default_flash_free_driver_priv() to simply free(bank->driver_priv)
+	 *
+	 * @param bank - the bank being destroyed
+	 */
+	void (*free_driver_priv)(struct flash_bank *bank);
 };
 
 #define FLASH_BANK_COMMAND_HANDLER(name) \
@@ -223,4 +233,4 @@ struct flash_driver {
  */
 struct flash_driver *flash_driver_find_by_name(const char *name);
 
-#endif /* FLASH_NOR_DRIVER_H */
+#endif /* OPENOCD_FLASH_NOR_DRIVER_H */

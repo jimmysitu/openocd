@@ -16,13 +16,11 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
-#ifndef FLASH_NOR_CORE_H
-#define FLASH_NOR_CORE_H
+#ifndef OPENOCD_FLASH_NOR_CORE_H
+#define OPENOCD_FLASH_NOR_CORE_H
 
 #include <flash/common.h>
 
@@ -48,6 +46,8 @@ struct flash_sector {
 	/**
 	 * Indication of erasure status: 0 = not erased, 1 = erased,
 	 * other = unknown.  Set by @c flash_driver_s::erase_check.
+	 *
+	 * Flag is not used in protection block
 	 */
 	int is_erased;
 	/**
@@ -58,9 +58,19 @@ struct flash_sector {
 	 * This information must be considered stale immediately.
 	 * A million things could make it stale: power cycle,
 	 * reset of target, code running on target, etc.
+	 *
+	 * If a flash_bank uses an extra array of protection blocks,
+	 * protection flag is not valid in sector array
 	 */
 	int is_protected;
 };
+
+/** Special value for write_start_alignment and write_end_alignment field */
+#define FLASH_WRITE_ALIGN_SECTOR	UINT32_MAX
+
+/** Special values for minimal_write_gap field */
+#define FLASH_WRITE_CONTINUOUS		0
+#define FLASH_WRITE_GAP_SECTOR		UINT32_MAX
 
 /**
  * Provides details of a flash bank, available either on-chip or through
@@ -73,7 +83,7 @@ struct flash_sector {
  * per-bank basis, if required.
  */
 struct flash_bank {
-	const char *name;
+	char *name;
 
 	struct target *target; /**< Target to which this bank belongs. */
 
@@ -87,9 +97,24 @@ struct flash_bank {
 	int chip_width; /**< Width of the chip in bytes (1,2,4 bytes) */
 	int bus_width; /**< Maximum bus width, in bytes (1,2,4 bytes) */
 
+	/** Erased value. Defaults to 0xFF. */
+	uint8_t erased_value;
+
 	/** Default padded value used, normally this matches the  flash
 	 * erased value. Defaults to 0xFF. */
 	uint8_t default_padded_value;
+
+	/** Required alignment of flash write start address.
+	 * Default 0, no alignment. Can be any power of two or FLASH_WRITE_ALIGN_SECTOR */
+	uint32_t write_start_alignment;
+	/** Required alignment of flash write end address.
+	 * Default 0, no alignment. Can be any power of two or FLASH_WRITE_ALIGN_SECTOR */
+	uint32_t write_end_alignment;
+	/** Minimal gap between sections to discontinue flash write
+	 * Default FLASH_WRITE_GAP_SECTOR splits the write if one or more untouched
+	 * sectors in between.
+     * Can be size in bytes or FLASH_WRITE_CONTINUOUS */
+	uint32_t minimal_write_gap;
 
 	/**
 	 * The number of sectors on this chip.  This value will
@@ -97,8 +122,18 @@ struct flash_bank {
 	 * some non-zero value during "probe()" or "auto_probe()".
 	 */
 	int num_sectors;
-	/** Array of sectors, allocated and initilized by the flash driver */
+	/** Array of sectors, allocated and initialized by the flash driver */
 	struct flash_sector *sectors;
+
+	/**
+	 * The number of protection blocks in this bank. This value
+	 * is set intially to 0 and sectors are used as protection blocks.
+	 * Driver probe can set protection blocks array to work with
+	 * protection granularity different than sector size.
+	 */
+	int num_prot_blocks;
+	/** Array of protection blocks, allocated and initilized by the flash driver */
+	struct flash_sector *prot_blocks;
 
 	struct flash_bank *next; /**< The next flash bank on this chip */
 };
@@ -120,6 +155,22 @@ int flash_unlock_address_range(struct target *target, uint32_t addr,
 		uint32_t length);
 
 /**
+ * Align start address of a flash write region according to bank requirements.
+ * @param bank Pointer to bank descriptor structure
+ * @param addr Address to align
+ * @returns Aligned address
+*/
+target_addr_t flash_write_align_start(struct flash_bank *bank, target_addr_t addr);
+/**
+ * Align end address of a flash write region according to bank requirements.
+ * Note: Use address of the last byte to write, not the next after the region.
+ * @param bank Pointer to bank descriptor structure
+ * @param addr Address to align (address of the last byte to write)
+ * @returns Aligned address (address of the last byte of padded region)
+*/
+target_addr_t flash_write_align_end(struct flash_bank *bank, target_addr_t addr);
+
+/**
  * Writes @a image into the @a target flash.  The @a written parameter
  * will contain the
  * @param target The target with the flash to be programmed.
@@ -137,8 +188,15 @@ int flash_write(struct target *target,
  * This routine must be called when the system may modify the status.
  */
 void flash_set_dirty(void);
+
 /** @returns The number of flash banks currently defined. */
 int flash_get_bank_count(void);
+
+/** Deallocates bank->driver_priv */
+void default_flash_free_driver_priv(struct flash_bank *bank);
+
+/** Deallocates all flash banks */
+void flash_free_all_banks(void);
 /**
  * Provides default read implementation for flash memory.
  * @param bank The bank to read.
@@ -207,5 +265,13 @@ struct flash_bank *get_flash_bank_by_num_noprobe(int num);
  */
 int get_flash_bank_by_addr(struct target *target, uint32_t addr, bool check,
 		struct flash_bank **result_bank);
+/**
+ * Allocate and fill an array of sectors or protection blocks.
+ * @param offset Offset of first block.
+ * @param size Size of each block.
+ * @param num_blocks Number of blocks in array.
+ * @returns A struct flash_sector pointer or NULL when allocation failed.
+ */
+struct flash_sector *alloc_block_array(uint32_t offset, uint32_t size, int num_blocks);
 
-#endif /* FLASH_NOR_CORE_H */
+#endif /* OPENOCD_FLASH_NOR_CORE_H */

@@ -16,13 +16,11 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
-#ifndef _HL_INTERFACE
-#define _HL_INTERFACE
+#ifndef OPENOCD_JTAG_HLA_HLA_INTERFACE_H
+#define OPENOCD_JTAG_HLA_HLA_INTERFACE_H
 
 /** */
 struct target;
@@ -31,15 +29,17 @@ enum e_hl_transports;
 /** */
 extern const char *hl_transports[];
 
+#define HLA_MAX_USB_IDS 8
+
 struct hl_interface_param_s {
 	/** */
 	const char *device_desc;
 	/** */
 	const char *serial;
-	/** */
-	uint16_t vid;
-	/** */
-	uint16_t pid;
+	/** List of recognised VIDs */
+	uint16_t vid[HLA_MAX_USB_IDS + 1];
+	/** List of recognised PIDs */
+	uint16_t pid[HLA_MAX_USB_IDS + 1];
 	/** */
 	unsigned api;
 	/** */
@@ -67,4 +67,4 @@ int hl_interface_init_target(struct target *t);
 int hl_interface_init_reset(void);
 int hl_interface_override_target(const char **targetname);
 
-#endif /* _HL_INTERFACE */
+#endif /* OPENOCD_JTAG_HLA_HLA_INTERFACE_H */

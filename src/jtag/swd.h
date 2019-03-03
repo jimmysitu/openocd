@@ -12,13 +12,11 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
-#ifndef SWD_H
-#define SWD_H
+#ifndef OPENOCD_JTAG_SWD_H
+#define OPENOCD_JTAG_SWD_H
 
 #include <target/arm_adi_v5.h>
 
@@ -213,6 +211,4 @@ struct swd_driver {
 int swd_init_reset(struct command_context *cmd_ctx);
 void swd_add_reset(int req_srst);
 
-bool transport_is_swd(void);
-
-#endif /* SWD_H */
+#endif /* OPENOCD_JTAG_SWD_H */

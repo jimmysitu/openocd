@@ -19,13 +19,11 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
-#ifndef CORTEX_M_H
-#define CORTEX_M_H
+#ifndef OPENOCD_TARGET_CORTEX_M_H
+#define OPENOCD_TARGET_CORTEX_M_H
 
 #include "armv7m.h"
 
@@ -50,6 +48,7 @@
 
 #define DWT_CTRL	0xE0001000
 #define DWT_CYCCNT	0xE0001004
+#define DWT_PCSR	0xE000101C
 #define DWT_COMP0	0xE0001020
 #define DWT_MASK0	0xE0001024
 #define DWT_FUNCTION0	0xE0001028
@@ -176,7 +175,6 @@ struct cortex_m_common {
 	int fp_code_available;
 	int fp_rev;
 	int fpb_enabled;
-	int auto_bp_type;
 	struct cortex_m_fp_comparator *fp_comparator_list;
 
 	/* Data Watchpoint and Trace (DWT) */
@@ -186,10 +184,13 @@ struct cortex_m_common {
 	struct reg_cache *dwt_cache;
 
 	enum cortex_m_soft_reset_config soft_reset_config;
+	bool vectreset_supported;
 
 	enum cortex_m_isrmasking_mode isrmasking_mode;
 
 	struct armv7m_common armv7m;
+
+	int apsel;
 };
 
 static inline struct cortex_m_common *
@@ -212,5 +213,7 @@ void cortex_m_enable_breakpoints(struct target *target);
 void cortex_m_enable_watchpoints(struct target *target);
 void cortex_m_dwt_setup(struct cortex_m_common *cm, struct target *target);
 void cortex_m_deinit_target(struct target *target);
+int cortex_m_profiling(struct target *target, uint32_t *samples,
+	uint32_t max_num_samples, uint32_t *num_samples, uint32_t seconds);
 
-#endif /* CORTEX_M_H */
+#endif /* OPENOCD_TARGET_CORTEX_M_H */

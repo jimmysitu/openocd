@@ -19,9 +19,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -502,7 +500,6 @@ static int em357_write_block(struct flash_bank *bank, const uint8_t *buffer,
 		LOG_WARNING("no working area available, can't do block memory writes");
 		return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
 	}
-	;
 
 	retval = target_write_buffer(target, write_algorithm->address,
 			sizeof(em357_flash_write_code), em357_flash_write_code);
@@ -703,6 +700,11 @@ static int em357_probe(struct flash_bank *bank)
 		case 0x40000:
 			/* 256k -- 128 2k pages */
 			num_pages = 128;
+			page_size = 2048;
+			break;
+		case 0x80000:
+			/* 512k -- 256 2k pages */
+			num_pages = 256;
 			page_size = 2048;
 			break;
 		default:
@@ -939,4 +941,5 @@ struct flash_driver em357_flash = {
 	.auto_probe = em357_auto_probe,
 	.erase_check = default_flash_blank_check,
 	.protect_check = em357_protect_check,
+	.free_driver_priv = default_flash_free_driver_priv,
 };

@@ -16,13 +16,11 @@
 *   GNU General Public License for more details.                          *
 *                                                                         *
 *   You should have received a copy of the GNU General Public License     *
-*   along with this program; if not, write to the                         *
-*   Free Software Foundation, Inc.,                                       *
-*   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+*   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
 ***************************************************************************/
 
-#ifndef JTAG_H
-#define JTAG_H
+#ifndef OPENOCD_JTAG_JTAG_H
+#define OPENOCD_JTAG_JTAG_H
 
 #include <helper/binarybuffer.h>
 #include <helper/log.h>
@@ -107,7 +105,7 @@ extern tap_state_t cmd_queue_cur_state;
  * jtag_add_dr_scan_check() to validate the value that was scanned out.
  */
 struct scan_field {
-	/** The number of bits this field specifies (up to 32) */
+	/** The number of bits this field specifies */
 	int num_bits;
 	/** A pointer to value to be scanned into the device */
 	const uint8_t *out_value;
@@ -155,8 +153,6 @@ struct jtag_tap {
 	struct jtag_tap_event_action *event_action;
 
 	struct jtag_tap *next_tap;
-	/* dap instance if some null if no instance , initialized to 0 by calloc*/
-	struct adiv5_dap *dap;
 	/* private pointer to support none-jtag specific functions */
 	void *priv;
 };
@@ -644,8 +640,6 @@ void jtag_poll_set_enabled(bool value);
  * level APIs that are used in inner loops. */
 #include <jtag/minidriver.h>
 
-bool transport_is_jtag(void);
-
 int jim_jtag_newtap(Jim_Interp *interp, int argc, Jim_Obj *const *argv);
 
-#endif /* JTAG_H */
+#endif /* OPENOCD_JTAG_JTAG_H */
